@@ -9,9 +9,9 @@ const navButtons = document.querySelectorAll('[data-route]');
 const menuToggle = document.getElementById('menu-toggle');
 const drawer = document.getElementById('main-menu');
 
-/* Game containers & controls (we will toggle these on/off per route) */
-const boardWrap = document.querySelector('.board-wrap');      // outer container
-const board = document.getElementById('board');               // inner canvas area
+/* Game containers & controls */
+const boardWrap = document.querySelector('.board-wrap');
+const board = document.getElementById('board');
 const hudEl = document.querySelector('#level1 .hud');
 const levelButtonsRow = document.querySelector('#level1 .row');
 const pauseBtn = document.getElementById('btn-pause');
@@ -19,12 +19,21 @@ const exitBtn = document.getElementById('btn-exit1');
 const resetBtn = document.getElementById('btn-reset-level');
 
 /* =========================================================================
-   Progressive enhancement: (mute, toast, footer) – removed difficulty select
+   Progressive enhancement (mute, toast, footer, HUD %)
    ========================================================================= */
 (function ensureOptionalUI(){
-  // REMOVE difficulty selector (you only want Simple/Hard modes per stage)
+  // 只保留 Simple/Hard（移除旧难度下拉）
   const oldDiff = document.getElementById('difficultySelect');
   if (oldDiff) oldDiff.parentElement?.remove();
+
+  // HUD 百分比
+  if (hudEl && !document.getElementById('progressPercent')) {
+    const pct = document.createElement('div');
+    pct.id = 'progressPercent';
+    pct.className = 'score-box';
+    pct.textContent = '0%';
+    hudEl.appendChild(pct);
+  }
 
   // Mute button
   if (hudEl && !document.getElementById('muteBtn')) {
@@ -60,7 +69,7 @@ const resetBtn = document.getElementById('btn-reset-level');
 })();
 
 /* =========================================================================
-   User + Storage (multi-profile via localStorage)
+   User + Storage
    ========================================================================= */
 const USER_KEY = 'edm-user';
 let currentUser = localStorage.getItem(USER_KEY) || 'guest';
@@ -71,7 +80,6 @@ const store = {
   save(data){ localStorage.setItem(storageKey(), JSON.stringify(data)); },
   clear(){ localStorage.removeItem(storageKey()); }
 };
-
 let save = Object.assign({ completed: 0, unlocked: 1, achievements: {} }, store.load());
 
 function injectLoginButton(){
@@ -94,7 +102,7 @@ function injectLoginButton(){
 }
 
 /* =========================================================================
-   Router + Hard Gate for Level UI
+   Router
    ========================================================================= */
 function toggleLevelUI(show){
   if(boardWrap) boardWrap.style.display = show ? 'block' : 'none';
@@ -134,7 +142,6 @@ menuToggle.addEventListener('click', ()=>{
   menuToggle.setAttribute('aria-expanded', open ? 'true':'false');
 });
 
-/* Reset current user's progress */
 document.getElementById('btn-reset-all')?.addEventListener('click', ()=>{
   if(!confirm(`Reset all progress for "${currentUser}"? This will clear achievements.`)) return;
   store.clear();
@@ -144,16 +151,23 @@ document.getElementById('btn-reset-all')?.addEventListener('click', ()=>{
 });
 
 /* =========================================================================
-   Home: global progress (exactly 6 drops)
+   Home progress (6 drops: Simple=half, Hard=filled)
    ========================================================================= */
 const TOTAL_STAGES = 6;
 function renderGlobalProgress(){
-  const slots = Array.from(document.querySelectorAll('[data-slot]')).slice(0, TOTAL_STAGES);
-  slots.forEach((el,i)=> el.classList.toggle('filled', i < Math.min(TOTAL_STAGES, save.completed||0)));
+  for(let i=1;i<=TOTAL_STAGES;i++){
+    const el = document.querySelector(`.drops .drop[data-slot="${i-1}"]`);
+    if(!el) continue;
+    const hasS = !!save.achievements[`L${i}-S`];
+    const hasH = !!save.achievements[`L${i}-H`];
+    el.classList.remove('half','filled');
+    if(hasH) el.classList.add('filled');
+    else if(hasS) el.classList.add('half');
+  }
 }
 
 /* =========================================================================
-   Stage select – Simple/Hard buttons per card (Hard locked until Simple)
+   Stage select (Simple / Hard)
    ========================================================================= */
 function renderStageGrid(){
   const grid = document.getElementById('stage-grid');
@@ -171,31 +185,24 @@ function renderStageGrid(){
 
     if(i>save.unlocked){
       card.classList.add('locked');
-      const btns = card.querySelectorAll('button');
-      btns.forEach(b=>{ b.disabled = true; });
+      card.querySelectorAll('button').forEach(b=> b.disabled = true);
       card.insertAdjacentHTML('beforeend', '<span class="badge">Locked</span>');
     }else{
-      // Badge showing what’s done
       const hasS = !!save.achievements[`L${i}-S`];
       const hasH = !!save.achievements[`L${i}-H`];
       const label = [hasS?'✓ Simple':'', hasH?'★ Hard':''].filter(Boolean).join(' ');
       if(label) card.insertAdjacentHTML('beforeend', `<span class="badge">${label}</span>`);
-
-      // Hard only enabled after Simple is completed
-      const btnS = card.querySelector('button[data-mode="S"]');
-      const btnH = card.querySelector('button[data-mode="H"]');
-      btnH.disabled = !hasS;
-
+      const btnS = card.querySelector('[data-mode="S"]');
+      const btnH = card.querySelector('[data-mode="H"]');
+      btnH.disabled = !hasS; // Hard 需先过 Simple
       btnS.addEventListener('click', ()=>{
         goto('level1');
-        if(i === 6) startStage6Placeholder();
-        else startRunner(i, 'S');
+        if(i === 6) startStage6Placeholder(); else startRunner(i,'S');
       });
       btnH.addEventListener('click', ()=>{
         if(btnH.disabled) return;
         goto('level1');
-        if(i === 6) startStage6Placeholder();
-        else startRunner(i, 'H');
+        if(i === 6) startStage6Placeholder(); else startRunner(i,'H');
       });
     }
 
@@ -204,7 +211,7 @@ function renderStageGrid(){
 }
 
 /* =========================================================================
-   Achievements (tab filter + two columns)
+   Achievements（Tab 分别统计 & 可点击）
    ========================================================================= */
 let achTab = 'simple';
 const achList = document.getElementById('ach-list');
@@ -212,31 +219,55 @@ const achP = document.getElementById('ach-p');
 
 function achievementMeta(level, tab){
   return (tab === 'simple')
-    ? { ach:`Complete Stage ${level} (Simple)`, reward:`+1 drop toward village progress` }
+    ? { ach:`Complete Stage ${level} (Simple)`, reward:`Revive and mark Simple` }
     : { ach:`Complete Stage ${level} (Hard)`,   reward:`Revive and mark Hard` };
 }
+function statusLabel(s){ return s === 'finished' ? 'Finished' : s[0].toUpperCase()+s.slice(1); }
+
 function renderAchievements(){
   let html = `
     <div class="ach-row ach-head">
       <div>Achievement</div><div>Reward</div>
     </div>`;
-  let unlocked = 0;
+
+  let finishedCount = 0;
+
   for(let i=1;i<=TOTAL_STAGES;i++){
-    const key = `L${i}-${achTab==='simple'?'S':'H'}`;
-    const on = !!save.achievements[key];
-    if(on) unlocked++;
+    const hasS = !!save.achievements[`L${i}-S`];
+    const hasH = !!save.achievements[`L${i}-H`];
+
+    let status, mode;
+    if (achTab === 'simple') {
+      mode = 'S';
+      if (i > save.unlocked) status = 'locked';
+      else status = hasS ? 'finished' : 'unlocked';
+    } else {
+      mode = 'H';
+      if (!hasS) status = 'locked';
+      else status = hasH ? 'finished' : 'unlocked';
+    }
+    if (status === 'finished') finishedCount++;
+
     const meta = achievementMeta(i, achTab);
+    const disabledAttr = status === 'locked' || status === 'finished' ? 'disabled aria-disabled="true"' : '';
+
     html += `
-      <div class="ach-row">
+      <button class="ach-row ach-btn ${status}" data-level="${i}" data-mode="${mode}" ${disabledAttr}>
         <div class="ach-left">
           <span class="ach-title">${meta.ach}</span>
-          <span class="status ${on?'ok':''}">${on?'Unlocked':'Locked'}</span>
+          <span class="status ${status}">${statusLabel(status)}</span>
         </div>
         <div class="ach-right">${meta.reward}</div>
-      </div>`;
+      </button>`;
   }
+
   achList.innerHTML = html;
-  achP.textContent = `${unlocked}/${TOTAL_STAGES}`;
+
+  const progressText = `Progress: ${finishedCount}/${TOTAL_STAGES}`;
+  const progHost = document.querySelector('#achievements .ach-progress');
+  if (progHost) progHost.textContent = progressText;
+  if (achP) achP.textContent = `${finishedCount}/${TOTAL_STAGES}`;
+
   document.querySelectorAll('#achievements .tab').forEach(btn=>{
     const on = btn.dataset.tab === achTab;
     btn.classList.toggle('active', on);
@@ -246,6 +277,14 @@ function renderAchievements(){
 document.querySelectorAll('#achievements .tab').forEach(btn=>{
   btn.addEventListener('click', ()=>{ achTab = btn.dataset.tab; renderAchievements(); });
 });
+achList?.addEventListener('click', (e)=>{
+  const rowBtn = e.target.closest('.ach-btn');
+  if(!rowBtn || rowBtn.disabled) return;
+  const level = parseInt(rowBtn.dataset.level, 10);
+  const mode  = rowBtn.dataset.mode; // 'S'|'H'
+  goto('level1');
+  if (level === 6) startStage6Placeholder(); else startRunner(level, mode);
+});
 
 /* =========================================================================
    Runner (Stages 1–5)
@@ -254,6 +293,7 @@ const scoreEl = document.getElementById('score');
 const timerEl = document.getElementById('timer');
 const pollEl = document.getElementById('poll');
 const hudLevelEl = document.getElementById('hud-level');
+const pctEl = document.getElementById('progressPercent');
 
 const GROUND_Y = 100;
 const LANES = [8, 58, 108];
@@ -264,15 +304,15 @@ let raf = 0, running = false;
 let viewW = 0, scrollX = 0, maxSpawnX = 0;
 let pitProb = 0.16, lastPitX = -Infinity;
 let timeLeft = 180, score = 0, collected = 0, pollution = 0;
-let player = { x: 80, y: 0, vy: 0, onGround: true };
+let player = { x: 30, y: 0, vy: 0, onGround: true, w:48, h:56 }; // left=30
 let levelIdx = 1;
-let stageMode = 'S'; // 'S' Simple / 'H' Hard
+let stageMode = 'S'; // 'S' | 'H'
 let drops = [];   // {x,y,type,taken,el}
 let pits = [];    // {x,w,el}
 let timerId = 0;
 let runnerSnapshot = null;
 
-/* ---------- Milestones ---------- */
+/* Milestones */
 const MILESTONES = [
   { score: 5,  text: "Nice start! 🌊" },
   { score: 10, text: "Halfway there! 💧" },
@@ -294,7 +334,7 @@ function maybeShowMilestone(curScore){
   }
 }
 
-/* ---------- Stage tuning per mode ---------- */
+/* Stage tuning */
 const STAGES = {
   1: { timeS:180, goalS:20, timeH:150, goalH:25, pollution:false, basePit:0.16, hardPitAdd:0.03 },
   2: { timeS:180, goalS:25, timeH:150, goalH:30, pollution:false, basePit:0.16, hardPitAdd:0.03 },
@@ -302,6 +342,15 @@ const STAGES = {
   4: { timeS:180, goalS:30, timeH:150, goalH:36, pollution:true,  basePit:0.20, hardPitAdd:0.05 },
   5: { timeS:300, goalS:40, timeH:240, goalH:48, pollution:true,  basePit:0.20, hardPitAdd:0.05 },
 };
+function currentGoal(){
+  const s = STAGES[levelIdx];
+  return stageMode==='H' ? s.goalH : s.goalS;
+}
+function updatePct(){
+  const goal = currentGoal();
+  const pct = Math.min(100, Math.round((score/goal)*100));
+  if(pctEl) pctEl.textContent = `${pct}%`;
+}
 
 function makeGround(){
   board.innerHTML = '';
@@ -336,6 +385,7 @@ function spawnAhead(){
 function mountPlayer(){
   const el = document.createElement('div');
   el.className = 'player';
+  el.style.left = `${player.x}px`;
   el.style.bottom = `${GROUND_Y + 8}px`;
   board.appendChild(el);
   player.el = el; player.y = 0; player.vy = 0; player.onGround = true;
@@ -349,10 +399,8 @@ function startRunner(level, mode='S'){
 
   const base = STAGES[levelIdx];
   timeLeft = (mode==='H') ? base.timeH : base.timeS;
-  const goal   = (mode==='H') ? base.goalH : base.goalS;
-  // compute pit probability
-  pitProb = base.basePit + (mode==='H' ? base.hardPitAdd : 0);
-  pitProb = Math.max(0, Math.min(0.35, pitProb));
+  pitProb  = base.basePit + (mode==='H' ? base.hardPitAdd : 0);
+  pitProb  = Math.max(0, Math.min(0.35, pitProb));
 
   hudLevelEl.textContent = String(levelIdx);
   score = 0; collected = 0; pollution = 0;
@@ -360,11 +408,11 @@ function startRunner(level, mode='S'){
 
   scoreEl.textContent = '0'; pollEl.textContent = String(pollution);
   document.querySelectorAll('[data-hslot]').forEach(d=>d.classList.remove('filled'));
+  updatePct();
 
   viewW = board.clientWidth || 640; scrollX = 0; maxSpawnX = 0;
   makeGround(); spawnStatics(); mountPlayer();
 
-  // 🔊 play start cue
   sfx.play('start');
 
   running = true; cancelAnimationFrame(raf);
@@ -373,9 +421,6 @@ function startRunner(level, mode='S'){
   bindControls();
 
   runnerSnapshot = null;
-
-  // stash current stage goal so we don't recompute each frame
-  startRunner.stageGoal = goal;
 }
 
 function stopRunner(){
@@ -415,9 +460,9 @@ function togglePause(){
   if(pauseBtn) pauseBtn.textContent = running ? 'Pause' : 'Resume';
   if(running){
     raf = requestAnimationFrame(loop);
-    tickTimer(); // resumes ticking
+    tickTimer();
   }else{
-    clearTimeout(timerId); // IMPORTANT: stop countdown while paused
+    clearTimeout(timerId); // 暂停时停止计时器
   }
 }
 pauseBtn?.addEventListener('click', togglePause);
@@ -437,6 +482,7 @@ function loop(){
 
   spawnAhead();
 
+  // 更新位置
   drops.forEach(d=>{
     if(d.taken) return;
     const sx = d.x - scrollX;
@@ -448,16 +494,30 @@ function loop(){
     p.el.style.left = `${sx}px`;
   });
 
-  const footX = 80 + 16;
-  const hitPit = pits.find(p => footX >= (p.x - scrollX) && footX <= (p.x - scrollX + p.w));
-  if(hitPit && player.y <= 0){ failStage('pit'); return; }
+  /* --------- 修正后的坑碰撞（矩形重叠 + 接地才判定） --------- */
+  const playerLeft  = player.x;
+  const playerRight = player.x + player.w;
+  const nearGround  = player.y <= 2; // 脚基本贴地才算
 
-  drops.forEach(d=>{
-    if(d.taken) return;
+  if(nearGround){
+    for(const p of pits){
+      const pitLeft  = parseFloat(p.el.style.left) || (p.x - scrollX);
+      const pitRight = pitLeft + p.w;
+      // 水平有重叠才判；给 2px 安全边距
+      if (playerRight-2 >= pitLeft && playerLeft+2 <= pitRight){
+        failStage('pit');
+        return;
+      }
+    }
+  }
+
+  // 收集/污染
+  for (const d of drops){
+    if(d.taken) continue;
     const sx = d.x - scrollX;
-    const dx = Math.abs(sx - 80);
+    const dx = Math.abs(sx - (player.x + 16)); // 以角色大致中心比对
     const dy = Math.abs(d.y - player.y);
-    if(dx < 22 && dy < 24){
+    if(dx < 24 && dy < 24){
       d.taken = true;
 
       if(d.type==='dirty'){
@@ -469,14 +529,16 @@ function loop(){
         setTimeout(()=> d.el.remove(), 120);
 
         score++; collected++; scoreEl.textContent = String(score);
+        updatePct();
+
         const filled = collected % 8;
         document.querySelectorAll('[data-hslot]').forEach((dd,i)=> dd.classList.toggle('filled', i < filled));
 
         maybeShowMilestone(score);
-        if(score >= startRunner.stageGoal){ winStage(); return; }
+        if(score >= currentGoal()){ winStage(); return; }
       }
     }
-  });
+  }
 
   renderPlayer();
   raf = requestAnimationFrame(loop);
@@ -487,7 +549,7 @@ function tickTimer(){
   if(!running || timeLeft<=0) return;
   timeLeft--;
   const m = Math.floor(timeLeft/60), s = String(timeLeft%60).padStart(2,'0');
-  document.getElementById('timer').textContent = `${m}:${s}`;
+  timerEl.textContent = `${m}:${s}`;
   if(timeLeft <= 0){ failStage('timeout'); return; }
   timerId = setTimeout(tickTimer, 1000);
 }
@@ -514,7 +576,7 @@ function winStage(){
   const key = `L${levelIdx}-${stageMode}`;
   save.achievements[key] = true;
 
-  // Unlock next stage when Simple is completed; Hard does not gate unlocks
+  // 通过 Simple 解锁下一关；Hard 不解锁
   if(stageMode === 'S'){
     save.unlocked = Math.max(save.unlocked, levelIdx+1);
     save.completed = Math.max(save.completed||0, Math.min(levelIdx, TOTAL_STAGES));
@@ -525,8 +587,12 @@ function winStage(){
   sfx.play('win');
 
   setTimeout(()=> alert(`Level ${levelIdx} complete! ${stageMode==='H'?'HARD':'SIMPLE'} achievement unlocked.`), 50);
+  renderGlobalProgress();
+  renderStageGrid();
+  renderAchievements();
   goto('stage');
 }
+
 function snapshotRunner(){
   runnerSnapshot = {
     levelIdx, stageMode,
@@ -534,7 +600,6 @@ function snapshotRunner(){
     player: { y: player.y, vy: player.vy, onGround: player.onGround },
     drops: drops.filter(d=>!d.taken).map(d => ({ x: d.x, y: d.y, type: d.type })),
     pits: pits.map(p => ({ x: p.x, w: p.w })),
-    stageGoal: startRunner.stageGoal,
     pitProb
   };
 }
@@ -550,7 +615,6 @@ function resumeRunnerFromSnapshot(){
   collected  = snap.collected;
   pollution  = snap.pollution;
   pitProb    = snap.pitProb;
-  startRunner.stageGoal = snap.stageGoal;
 
   board.innerHTML = '';
   makeGround();
@@ -578,22 +642,25 @@ function resumeRunnerFromSnapshot(){
 
   maxSpawnX = Math.max(0, ...drops.map(d=>d.x), ...pits.map(p=>p.x + p.w));
 
-  // HUD restore
+  // HUD 恢复
   hudLevelEl.textContent = String(levelIdx);
   scoreEl.textContent = String(score);
   pollEl.textContent  = String(pollution);
   const m = Math.floor(timeLeft/60), s = String(timeLeft%60).padStart(2,'0');
   timerEl.textContent = `${m}:${s}`;
   document.querySelectorAll('[data-hslot]').forEach((dd,i)=> dd.classList.toggle('filled', i < (collected % 8)));
+  updatePct();
 
   running = true;
   cancelAnimationFrame(raf);
   raf = requestAnimationFrame(loop);
   clearTimeout(timerId);
   tickTimer();
+  bindControls();              // 复活后一定重新绑定
 
-  runnerSnapshot = null; // consumed
+  runnerSnapshot = null;
 }
+
 function failStage(reason){
   snapshotRunner();
   stopRunner();
@@ -604,7 +671,7 @@ function failStage(reason){
 }
 
 /* =========================================================================
-   Challenge – Water Sort (unchanged logic, now resumes snapshot on solve)
+   Challenge – Water Sort（只做复活）
    ========================================================================= */
 const sortBoard = document.getElementById('sort-board');
 const undoBtn = document.getElementById('undo');
@@ -685,16 +752,14 @@ function checkSolved(){
     return vals.length===0 || vals.every(v=>v===vals[0]);
   });
   if(solved){
-    // Mark "Hard" achievement for the stage penalty itself if desired
-    save.achievements[`L${levelIdx}-H`] = true; store.save(save);
     alert("Penalty cleared! Resuming level.");
     goto('level1');
-    resumeRunnerFromSnapshot(); // 🔁 restore board/sprites/timer
+    resumeRunnerFromSnapshot(); // 复活
   }
 }
 
 /* =========================================================================
-   Stage 6 – placeholder renderer (kept minimal)
+   Stage 6 – placeholder
    ========================================================================= */
 function startStage6Placeholder(){
   stopRunner();
@@ -714,10 +779,11 @@ function startStage6Placeholder(){
   document.getElementById('timer').textContent = '∞';
   document.getElementById('score').textContent = '0';
   document.getElementById('poll').textContent = '0';
+  const pct = document.getElementById('progressPercent'); if(pct) pct.textContent = '0%';
 }
 
 /* =========================================================================
-   SFX (start / win / fail only)
+   SFX (start / win / fail)
    ========================================================================= */
 const sfx = (() => {
   const cache = {
@@ -725,11 +791,9 @@ const sfx = (() => {
     win:   new Audio('audio/winner-game-sound.mp3'),
     fail:  new Audio('audio/game-over.mp3'),
   };
-
   cache.start.volume = 0.85;
   cache.win.volume   = 0.9;
   cache.fail.volume  = 0.9;
-
   Object.values(cache).forEach(a => { a.preload='auto'; });
 
   let muted = false;
@@ -740,7 +804,7 @@ const sfx = (() => {
     e.currentTarget.textContent = muted ? '🔇' : '🔊';
   });
 
-  // unlock audio on first user gesture (mobile)
+  // unlock on first gesture
   window.addEventListener('pointerdown', ()=>{
     Object.values(cache).forEach(a => a.play().then(()=>a.pause()).catch(()=>{}));
   }, { once:true });
@@ -762,6 +826,6 @@ function init(){
   renderStageGrid();
   renderAchievements();
   initSort();
-  toggleLevelUI(false); // start with all level UI hidden
+  toggleLevelUI(false);
 }
 init();

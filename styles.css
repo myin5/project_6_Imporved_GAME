@@ -331,4 +331,28 @@ body, button, input { font-family: var(--font-ui); }
 
 /* Small tweak: keep HUD grid happy with new controls */
 .hud { grid-template-columns: 1fr auto auto auto auto auto; }
+.drop.half{
+  
+  background: linear-gradient(to top, var(--brand-navy) 50%, transparent 50%);
+  opacity: 1;
+}
+.drop.filled{
+  opacity: 1;
+  background: var(--brand-navy);
+}
 
+/* Achievements: clickable rows & status styles */
+#achievements .ach-btn {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 10px;
+  border: 2px solid var(--slate);
+  border-radius: 12px;
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+#achievements .ach-btn.locked { opacity:.6; cursor:not-allowed; }
+#achievements .ach-btn.finished { background:#eef6f8; border-color:#77A8BB; }
+.status.finished{ background:#77A8BB; border-color:#77A8BB; color:#0b2a3a; }
