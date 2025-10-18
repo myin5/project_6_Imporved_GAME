@@ -19,6 +19,55 @@ const exitBtn = document.getElementById('btn-exit1');
 const resetBtn = document.getElementById('btn-reset-level');
 
 /* =========================================================================
+   Progressive enhancement: ensure optional UI exists (difficulty, mute, toast, footer)
+   ========================================================================= */
+(function ensureOptionalUI(){
+  // Difficulty selector
+  if (hudEl && !document.getElementById('difficultySelect')) {
+    const label = document.createElement('label');
+    label.className = 'diff';
+    label.innerHTML = `Mode:
+      <select id="difficultySelect" aria-label="Difficulty">
+        <option>Easy</option>
+        <option selected>Normal</option>
+        <option>Hard</option>
+      </select>`;
+    hudEl.appendChild(label);
+  }
+  // Mute button
+  if (hudEl && !document.getElementById('muteBtn')) {
+    const mute = document.createElement('button');
+    mute.id = 'muteBtn';
+    mute.className = 'btn btn-small';
+    mute.title = 'Mute/Unmute';
+    mute.setAttribute('aria-pressed','false');
+    mute.textContent = '🔊';
+    hudEl.appendChild(mute);
+  }
+  // Milestone toast
+  if (hudEl && !document.getElementById('toast')) {
+    const toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.className = 'toast';
+    toast.setAttribute('role','status');
+    toast.setAttribute('aria-live','polite');
+    hudEl.appendChild(toast);
+  }
+  // Footer links
+  const footer = document.querySelector('footer');
+  if (footer && footer.childElementCount === 0) {
+    footer.classList.add('site-footer');
+    footer.innerHTML = `
+      <p>
+        Learn more at
+        <a href="https://www.charitywater.org" target="_blank" rel="noopener">charity: water</a>
+        •
+        <a href="https://www.charitywater.org/donate" target="_blank" rel="noopener">Donate</a>
+      </p>`;
+  }
+})();
+
+/* =========================================================================
    User + Storage (multi-profile via localStorage)
    ========================================================================= */
 const USER_KEY = 'edm-user';
@@ -210,6 +259,7 @@ let pits = [];    // {x,w,el}
 let timerId = 0;
 let runnerSnapshot = null;
 
+/* ---------- NEW: Difficulty overlay ---------- */
 const DIFFICULTY = {
   Easy:   { timeMult: 1.15, goalAdd: -5, pitProbAdd: -0.02 },
   Normal: { timeMult: 1.00, goalAdd:  0, pitProbAdd:  0.00 },
@@ -220,7 +270,8 @@ const diffSelect = document.getElementById('difficultySelect');
 diffSelect?.addEventListener('change', (e)=>{
   currentDifficulty = e.target.value;
   if (!sections['level1'].hidden) { stopRunner(); startRunner(levelIdx); }
-})
+});
+
 const STAGES = {
   1: { time:180, goal:20, pollution:false },
   2: { time:180, goal:25, pollution:false },
@@ -268,19 +319,40 @@ function mountPlayer(){
 }
 function renderPlayer(){ player.el.style.transform = `translateY(${-player.y}px)`; }
 
+/* ---------- NEW: Milestones ---------- */
+const MILESTONES = [
+  { score: 5,  text: "Nice start! 🌊" },
+  { score: 10, text: "Halfway there! 💧" },
+  { score: 15, text: "So close! 🚀" },
+];
+const shownMilestones = new Set();
+function maybeShowMilestone(curScore){
+  for (const m of MILESTONES) {
+    if (curScore >= m.score && !shownMilestones.has(m.score)) {
+      shownMilestones.add(m.score);
+      const t = document.getElementById('toast');
+      if(t){
+        t.textContent = m.text;
+        t.classList.add('show');
+        setTimeout(()=> t.classList.remove('show'), 1200);
+      }
+      break;
+    }
+  }
+}
+
 function startRunner(level){
   levelIdx = level;
-  const stage = STAGES[levelIdx];
+  const base = STAGES[levelIdx];
   const diff = DIFFICULTY[currentDifficulty] || DIFFICULTY.Normal;
 
   hudLevelEl.textContent = String(levelIdx);
-  timeLeft =  Math.round((base.time || 180) * diff.timeMult);
+  timeLeft = Math.round((base.time || 180) * diff.timeMult);
   score = 0; collected = 0; pollution = 0;
-  
- pitProb = (levelIdx>=4?0.20:(levelIdx>=3?0.18:0.16)) + (diff.pitProbAdd||0);
-  pitProb = Math.max(0, Math.min(0.35, pitProb));
   speed = 3.2;
-  
+  pitProb = (levelIdx>=4?0.20:(levelIdx>=3?0.18:0.16)) + (diff.pitProbAdd||0);
+  pitProb = Math.max(0, Math.min(0.35, pitProb));
+
   scoreEl.textContent = '0'; pollEl.textContent = String(pollution);
   document.querySelectorAll('[data-hslot]').forEach(d=>d.classList.remove('filled'));
 
@@ -327,10 +399,10 @@ function onPointerUp(){ if(sections['level1'].hidden) return; endJump(); }
 function onAuxClick(e){ if(sections['level1'].hidden || isUiClick(e.target)) return; if(e.button===2){ e.preventDefault(); startJump(); } }
 function startJump(){ jumpHeld = true; if(player.onGround){ player.vy = 12; player.onGround = false; jumpBoost = 14; } }
 function endJump(){ if(!jumpHeld) return; jumpHeld = false; jumpBoost = 0; }
-function togglePause(){ running = !running; pauseBtn.textContent = running ? 'Pause' : 'Resume'; if(running){ raf = requestAnimationFrame(loop); tickTimer(); } }
-pauseBtn.addEventListener('click', togglePause);
-exitBtn.addEventListener('click', ()=> goto('stage'));
-resetBtn.addEventListener('click', ()=>{ stopRunner(); startRunner(levelIdx); });
+function togglePause(){ running = !running; if(pauseBtn) pauseBtn.textContent = running ? 'Pause' : 'Resume'; if(running){ raf = requestAnimationFrame(loop); tickTimer(); } }
+pauseBtn?.addEventListener('click', togglePause);
+exitBtn?.addEventListener('click', ()=> goto('stage'));
+resetBtn?.addEventListener('click', ()=>{ stopRunner(); startRunner(levelIdx); });
 
 /* Loop */
 function loop(){
@@ -366,15 +438,32 @@ function loop(){
     const dx = Math.abs(sx - 80);
     const dy = Math.abs(d.y - player.y);
     if(dx < 22 && dy < 24){
-      d.taken = true; d.el.remove();
+      d.taken = true;
+
       if(d.type==='dirty'){
+        // SFX: miss/penalty
+        sfx.play('miss');
+
+        d.el.remove();
         pollution = Math.min(100, pollution + 25); pollEl.textContent = String(pollution);
         if(pollution>=100){ failStage('pollution'); return; }
       }else{
+        // SFX: collect
+        sfx.play('collect');
+
+        // small pop animation then remove
+        d.el.classList.add('pop');
+        setTimeout(()=> d.el.remove(), 120);
+
         score++; collected++; scoreEl.textContent = String(score);
         const filled = collected % 8;
         document.querySelectorAll('[data-hslot]').forEach((dd,i)=> dd.classList.toggle('filled', i < filled));
-        const stageGoal = STAGES[levelIdx].goal || 20;
+
+        const base = STAGES[levelIdx];
+        const diff = DIFFICULTY[currentDifficulty] || DIFFICULTY.Normal;
+        const stageGoal = Math.max(1, (base.goal || 20) + (diff.goalAdd || 0));
+
+        maybeShowMilestone(score);
         if(score >= stageGoal){ winStage(); return; }
       }
     }
@@ -420,6 +509,8 @@ function winStage(){
   store.save(save);
 
   confettiBurst();
+  sfx.play('win');
+
   setTimeout(()=> alert(`Level ${levelIdx} complete! Simple achievement unlocked.`), 50);
   goto('stage');
 }
@@ -436,6 +527,7 @@ function resumeRunnerFromSnapshot(){ /* … keep if you use penalty → resume �
 function failStage(reason){
   // Optional: snapshotRunner();
   stopRunner();
+  sfx.play('miss');
   initSort();
   alert(`Failed (${reason}). Clear the Water Sort to revive.`);
   goto('challenge');
@@ -552,6 +644,42 @@ function startStage6Placeholder(){
   document.getElementById('score').textContent = '0';
   document.getElementById('poll').textContent = '0';
 }
+
+/* =========================================================================
+   Simple SFX manager (collect / miss / click / win)
+   ========================================================================= */
+const sfx = (() => {
+  const cache = {
+    collect: new Audio('audio/collect.mp3'),
+    miss:    new Audio('audio/miss.mp3'),
+    click:   new Audio('audio/click.mp3'),
+    win:     new Audio('audio/win.mp3'),
+  };
+  Object.values(cache).forEach(a => { a.preload='auto'; a.volume=0.8; });
+
+  let muted = false;
+  const muteBtn = document.getElementById('muteBtn');
+  muteBtn?.addEventListener('click', (e)=>{
+    muted = !muted;
+    e.currentTarget.setAttribute('aria-pressed', String(muted));
+    e.currentTarget.textContent = muted ? '🔇' : '🔊';
+  });
+
+  // unlock audio on first user gesture (mobile)
+  window.addEventListener('pointerdown', ()=>{
+    Object.values(cache).forEach(a => a.play().then(()=>a.pause()).catch(()=>{}));
+  }, { once:true });
+
+  // UI click sound
+  document.addEventListener('click', (e)=>{ if(e.target.closest('button')) play('click'); });
+
+  function play(name){
+    const a = cache[name]; if(!a || muted) return;
+    a.currentTime = 0;
+    a.play().catch(()=>{});
+  }
+  return { play };
+})();
 
 /* =========================================================================
    Boot
