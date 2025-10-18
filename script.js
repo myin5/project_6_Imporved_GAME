@@ -210,6 +210,17 @@ let pits = [];    // {x,w,el}
 let timerId = 0;
 let runnerSnapshot = null;
 
+const DIFFICULTY = {
+  Easy:   { timeMult: 1.15, goalAdd: -5, pitProbAdd: -0.02 },
+  Normal: { timeMult: 1.00, goalAdd:  0, pitProbAdd:  0.00 },
+  Hard:   { timeMult: 0.85, goalAdd:  5, pitProbAdd:  0.03 },
+};
+let currentDifficulty = 'Normal';
+const diffSelect = document.getElementById('difficultySelect');
+diffSelect?.addEventListener('change', (e)=>{
+  currentDifficulty = e.target.value;
+  if (!sections['level1'].hidden) { stopRunner(); startRunner(levelIdx); }
+})
 const STAGES = {
   1: { time:180, goal:20, pollution:false },
   2: { time:180, goal:25, pollution:false },
@@ -260,10 +271,16 @@ function renderPlayer(){ player.el.style.transform = `translateY(${-player.y}px)
 function startRunner(level){
   levelIdx = level;
   const stage = STAGES[levelIdx];
+  const diff = DIFFICULTY[currentDifficulty] || DIFFICULTY.Normal;
 
   hudLevelEl.textContent = String(levelIdx);
-  timeLeft = stage.time || 180; score = 0; collected = 0; pollution = 0;
-  speed = 3.2; pitProb = (levelIdx>=4?0.20:(levelIdx>=3?0.18:0.16));
+  timeLeft =  Math.round((base.time || 180) * diff.timeMult);
+  score = 0; collected = 0; pollution = 0;
+  
+ pitProb = (levelIdx>=4?0.20:(levelIdx>=3?0.18:0.16)) + (diff.pitProbAdd||0);
+  pitProb = Math.max(0, Math.min(0.35, pitProb));
+  speed = 3.2;
+  
   scoreEl.textContent = '0'; pollEl.textContent = String(pollution);
   document.querySelectorAll('[data-hslot]').forEach(d=>d.classList.remove('filled'));
 
