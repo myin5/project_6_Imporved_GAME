@@ -19,23 +19,13 @@ const exitBtn = document.getElementById('btn-exit1');
 const resetBtn = document.getElementById('btn-reset-level');
 
 /* =========================================================================
-   Progressive enhancement (mute, toast, footer, HUD %)
+   Progressive enhancement (remove difficulty select; ensure optional UI)
    ========================================================================= */
 (function ensureOptionalUI(){
-  // 只保留 Simple/Hard（移除旧难度下拉）
+  
   const oldDiff = document.getElementById('difficultySelect');
   if (oldDiff) oldDiff.parentElement?.remove();
 
-  // HUD 百分比
-  if (hudEl && !document.getElementById('progressPercent')) {
-    const pct = document.createElement('div');
-    pct.id = 'progressPercent';
-    pct.className = 'score-box';
-    pct.textContent = '0%';
-    hudEl.appendChild(pct);
-  }
-
-  // Mute button
   if (hudEl && !document.getElementById('muteBtn')) {
     const mute = document.createElement('button');
     mute.id = 'muteBtn';
@@ -45,7 +35,6 @@ const resetBtn = document.getElementById('btn-reset-level');
     mute.textContent = '🔊';
     hudEl.appendChild(mute);
   }
-  // Milestone toast
   if (hudEl && !document.getElementById('toast')) {
     const toast = document.createElement('div');
     toast.id = 'toast';
@@ -54,20 +43,8 @@ const resetBtn = document.getElementById('btn-reset-level');
     toast.setAttribute('aria-live','polite');
     hudEl.appendChild(toast);
   }
-  // Footer links
-  const footer = document.querySelector('footer');
-  if (footer && footer.childElementCount === 0) {
-    footer.classList.add('site-footer');
-    footer.innerHTML = `
-      <p>
-        Learn more at
-        <a href="https://www.charitywater.org" target="_blank" rel="noopener">charity: water</a>
-        •
-        <a href="https://www.charitywater.org/donate" target="_blank" rel="noopener">Donate</a>
-      </p>`;
-  }
 })();
-
+  
 /* =========================================================================
    User + Storage
    ========================================================================= */
@@ -151,23 +128,24 @@ document.getElementById('btn-reset-all')?.addEventListener('click', ()=>{
 });
 
 /* =========================================================================
-   Home progress (6 drops: Simple=half, Hard=filled)
+   Home + Stage 
    ========================================================================= */
 const TOTAL_STAGES = 6;
 function renderGlobalProgress(){
   for(let i=1;i<=TOTAL_STAGES;i++){
-    const el = document.querySelector(`.drops .drop[data-slot="${i-1}"]`);
-    if(!el) continue;
-    const hasS = !!save.achievements[`L${i}-S`];
-    const hasH = !!save.achievements[`L${i}-H`];
-    el.classList.remove('half','filled');
-    if(hasH) el.classList.add('filled');
-    else if(hasS) el.classList.add('half');
+    const el = document.querySelectorAll(`.progress .drops .drop[data-slot="${i-1}"]`);
+    el.forEach(drop=>{
+      const hasS = !!save.achievements[`L${i}-S`];
+      const hasH = !!save.achievements[`L${i}-H`];
+      drop.classList.remove('half','filled');
+      if(hasH) drop.classList.add('filled');
+      else if(hasS) drop.classList.add('half');
+    });
   }
 }
 
 /* =========================================================================
-   Stage select (Simple / Hard)
+   Stage select
    ========================================================================= */
 function renderStageGrid(){
   const grid = document.getElementById('stage-grid');
@@ -211,7 +189,7 @@ function renderStageGrid(){
 }
 
 /* =========================================================================
-   Achievements（Tab 分别统计 & 可点击）
+   Achievements
    ========================================================================= */
 let achTab = 'simple';
 const achList = document.getElementById('ach-list');
@@ -219,8 +197,8 @@ const achP = document.getElementById('ach-p');
 
 function achievementMeta(level, tab){
   return (tab === 'simple')
-    ? { ach:`Complete Stage ${level} (Simple)`, reward:`Revive and mark Simple` }
-    : { ach:`Complete Stage ${level} (Hard)`,   reward:`Revive and mark Hard` };
+    ? { ach:`Complete Stage ${level} (Simple)`, reward:`Amazon Gift Card $10` }
+    : { ach:`Complete Stage ${level} (Hard)`,   reward:`Amazon Gift Card $20` };
 }
 function statusLabel(s){ return s === 'finished' ? 'Finished' : s[0].toUpperCase()+s.slice(1); }
 
@@ -266,7 +244,7 @@ function renderAchievements(){
   const progressText = `Progress: ${finishedCount}/${TOTAL_STAGES}`;
   const progHost = document.querySelector('#achievements .ach-progress');
   if (progHost) progHost.textContent = progressText;
-  if (achP) achP.textContent = `${finishedCount}/${TOTAL_STAGES}`;
+  if (achP) achP.textContent = `${finishedCount}`;
 
   document.querySelectorAll('#achievements .tab').forEach(btn=>{
     const on = btn.dataset.tab === achTab;
@@ -291,9 +269,10 @@ achList?.addEventListener('click', (e)=>{
    ========================================================================= */
 const scoreEl = document.getElementById('score');
 const timerEl = document.getElementById('timer');
-const pollEl = document.getElementById('poll');
+const pollEl  = document.getElementById('poll');
 const hudLevelEl = document.getElementById('hud-level');
-const pctEl = document.getElementById('progressPercent');
+const levelPctEl = document.getElementById('level-pct');
+const levelBarEl = document.getElementById('level-bar');
 
 const GROUND_Y = 100;
 const LANES = [8, 58, 108];
@@ -308,11 +287,23 @@ let player = { x: 30, y: 0, vy: 0, onGround: true, w:48, h:56 }; // left=30
 let levelIdx = 1;
 let stageMode = 'S'; // 'S' | 'H'
 let drops = [];   // {x,y,type,taken,el}
-let pits = [];    // {x,w,el}
+let pits  = [];   // {x,w,el}
 let timerId = 0;
 let runnerSnapshot = null;
+let reviveFrames = 0; 
 
-/* Milestones */
+
+function floatText(screenX, screenBottomY, text, good=true){
+  const fx = document.createElement('div');
+  fx.className = `float-text ${good?'good':'bad'}`;
+  fx.textContent = text;
+  fx.style.left = `${Math.round(screenX)}px`;
+  fx.style.bottom = `${GROUND_Y + Math.round(screenBottomY)}px`;
+  board.appendChild(fx);
+  setTimeout(()=> fx.remove(), 1000);
+}
+
+
 const MILESTONES = [
   { score: 5,  text: "Nice start! 🌊" },
   { score: 10, text: "Halfway there! 💧" },
@@ -334,7 +325,7 @@ function maybeShowMilestone(curScore){
   }
 }
 
-/* Stage tuning */
+/* Stage （Simple / Hard） */
 const STAGES = {
   1: { timeS:180, goalS:20, timeH:150, goalH:25, pollution:false, basePit:0.16, hardPitAdd:0.03 },
   2: { timeS:180, goalS:25, timeH:150, goalH:30, pollution:false, basePit:0.16, hardPitAdd:0.03 },
@@ -349,7 +340,8 @@ function currentGoal(){
 function updatePct(){
   const goal = currentGoal();
   const pct = Math.min(100, Math.round((score/goal)*100));
-  if(pctEl) pctEl.textContent = `${pct}%`;
+  if (levelPctEl) levelPctEl.textContent = `${pct}%`;
+  if (levelBarEl) levelBarEl.style.width = `${pct}%`;
 }
 
 function makeGround(){
@@ -407,7 +399,6 @@ function startRunner(level, mode='S'){
   shownMilestones.clear();
 
   scoreEl.textContent = '0'; pollEl.textContent = String(pollution);
-  document.querySelectorAll('[data-hslot]').forEach(d=>d.classList.remove('filled'));
   updatePct();
 
   viewW = board.clientWidth || 640; scrollX = 0; maxSpawnX = 0;
@@ -421,6 +412,7 @@ function startRunner(level, mode='S'){
   bindControls();
 
   runnerSnapshot = null;
+  reviveFrames = 0;
 }
 
 function stopRunner(){
@@ -462,7 +454,7 @@ function togglePause(){
     raf = requestAnimationFrame(loop);
     tickTimer();
   }else{
-    clearTimeout(timerId); // 暂停时停止计时器
+    clearTimeout(timerId); 
   }
 }
 pauseBtn?.addEventListener('click', togglePause);
@@ -482,7 +474,7 @@ function loop(){
 
   spawnAhead();
 
-  // 更新位置
+ 
   drops.forEach(d=>{
     if(d.taken) return;
     const sx = d.x - scrollX;
@@ -494,34 +486,36 @@ function loop(){
     p.el.style.left = `${sx}px`;
   });
 
-  /* --------- 修正后的坑碰撞（矩形重叠 + 接地才判定） --------- */
-  const playerLeft  = player.x;
-  const playerRight = player.x + player.w;
-  const nearGround  = player.y <= 2; // 脚基本贴地才算
+  
+  const nearGround = player.y <= 2;
+  const centerX    = player.x + player.w * 0.5;
+  const SAFE = 6;
 
-  if(nearGround){
-    for(const p of pits){
-      const pitLeft  = parseFloat(p.el.style.left) || (p.x - scrollX);
+  if (reviveFrames > 0) {
+    reviveFrames--;
+  } else if (nearGround) {
+    for (const p of pits) {
+      const pitLeft  = (p.x - scrollX);
       const pitRight = pitLeft + p.w;
-      // 水平有重叠才判；给 2px 安全边距
-      if (playerRight-2 >= pitLeft && playerLeft+2 <= pitRight){
+      if (centerX >= pitLeft + SAFE && centerX <= pitRight - SAFE) {
         failStage('pit');
         return;
       }
     }
   }
 
-  // 收集/污染
+ 
   for (const d of drops){
     if(d.taken) continue;
     const sx = d.x - scrollX;
-    const dx = Math.abs(sx - (player.x + 16)); // 以角色大致中心比对
+    const dx = Math.abs(sx - (player.x + 16));
     const dy = Math.abs(d.y - player.y);
     if(dx < 24 && dy < 24){
       d.taken = true;
 
       if(d.type==='dirty'){
         d.el.remove();
+        floatText(sx, d.y + 10, '−', false);
         pollution = Math.min(100, pollution + 25); pollEl.textContent = String(pollution);
         if(pollution>=100){ failStage('pollution'); return; }
       }else{
@@ -529,10 +523,8 @@ function loop(){
         setTimeout(()=> d.el.remove(), 120);
 
         score++; collected++; scoreEl.textContent = String(score);
+        floatText(sx, d.y + 10, '+1', true);
         updatePct();
-
-        const filled = collected % 8;
-        document.querySelectorAll('[data-hslot]').forEach((dd,i)=> dd.classList.toggle('filled', i < filled));
 
         maybeShowMilestone(score);
         if(score >= currentGoal()){ winStage(); return; }
@@ -576,7 +568,7 @@ function winStage(){
   const key = `L${levelIdx}-${stageMode}`;
   save.achievements[key] = true;
 
-  // 通过 Simple 解锁下一关；Hard 不解锁
+
   if(stageMode === 'S'){
     save.unlocked = Math.max(save.unlocked, levelIdx+1);
     save.completed = Math.max(save.completed||0, Math.min(levelIdx, TOTAL_STAGES));
@@ -642,13 +634,12 @@ function resumeRunnerFromSnapshot(){
 
   maxSpawnX = Math.max(0, ...drops.map(d=>d.x), ...pits.map(p=>p.x + p.w));
 
-  // HUD 恢复
+  // HUD 
   hudLevelEl.textContent = String(levelIdx);
   scoreEl.textContent = String(score);
   pollEl.textContent  = String(pollution);
   const m = Math.floor(timeLeft/60), s = String(timeLeft%60).padStart(2,'0');
   timerEl.textContent = `${m}:${s}`;
-  document.querySelectorAll('[data-hslot]').forEach((dd,i)=> dd.classList.toggle('filled', i < (collected % 8)));
   updatePct();
 
   running = true;
@@ -656,9 +647,10 @@ function resumeRunnerFromSnapshot(){
   raf = requestAnimationFrame(loop);
   clearTimeout(timerId);
   tickTimer();
-  bindControls();              // 复活后一定重新绑定
+  bindControls();
 
   runnerSnapshot = null;
+  reviveFrames = 45; // ~0.75s 
 }
 
 function failStage(reason){
@@ -671,7 +663,7 @@ function failStage(reason){
 }
 
 /* =========================================================================
-   Challenge – Water Sort（只做复活）
+   Challenge – Water Sort
    ========================================================================= */
 const sortBoard = document.getElementById('sort-board');
 const undoBtn = document.getElementById('undo');
@@ -754,7 +746,7 @@ function checkSolved(){
   if(solved){
     alert("Penalty cleared! Resuming level.");
     goto('level1');
-    resumeRunnerFromSnapshot(); // 复活
+    resumeRunnerFromSnapshot();
   }
 }
 
@@ -779,7 +771,8 @@ function startStage6Placeholder(){
   document.getElementById('timer').textContent = '∞';
   document.getElementById('score').textContent = '0';
   document.getElementById('poll').textContent = '0';
-  const pct = document.getElementById('progressPercent'); if(pct) pct.textContent = '0%';
+  if (levelPctEl){ levelPctEl.textContent = '0%'; }
+  if (levelBarEl){ levelBarEl.style.width = '0%'; }
 }
 
 /* =========================================================================

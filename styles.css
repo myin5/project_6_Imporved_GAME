@@ -1,4 +1,4 @@
-:root{
+:root{ 
   --brand-yellow: #FFC907;
   --brand-navy:   #003366;
   --brand-purple: #7718BB;
@@ -8,7 +8,6 @@
   --clay:         #bf6c46;
   --slate:        #Cbccd1;
 
-  /* Derived tokens */
   --accent: var(--brand-yellow);
   --radius: 18px;
   --gap: clamp(10px, 2.5vw, 18px);
@@ -20,21 +19,18 @@
 html,body{ height:100% }
 [hidden]{ display:none!important }
 
-/* Base layout and typography */
 body{
   margin:0;
   color:var(--ink);
   font-family: ui-rounded, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
   line-height:1.25;
   background: var(--paper);
-  /* safe-area padding only uses background color from the palette */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 .app{ max-width:480px; margin:0 auto; padding:0 var(--gap) var(--gap) }
 @media (min-width:560px){ .app{ max-width:640px } }
 @media (min-width:920px){ .app{ max-width:920px } }
 
-/* Header */
 header{
   position:sticky; top:0; z-index:10;
   display:flex; align-items:center; justify-content:space-between;
@@ -52,7 +48,6 @@ header{
   padding:8px 10px; border-radius:8px; font-weight:900; cursor:pointer;
 }
 
-/* Logos (swap at small widths) */
 .logo-h { height: 26px; display: none; }
 .logo-s { height: 26px; }
 @media (min-width: 420px){
@@ -61,7 +56,6 @@ header{
 }
 .brand-title{ margin-left: 6px; }
 
-/* Vertical drop-down menu (stacked) */
 .nav-drawer{
   position: fixed;
   left: 0; right: 0;
@@ -103,7 +97,6 @@ header{
   border-color: var(--clay);
 }
 
-/* Main cards / panels */
 main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 .panel{
   background: var(--paper);
@@ -112,7 +105,6 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
   padding: calc(var(--gap) * 1.2);
 }
 
-/* Buttons */
 .btn{
   -webkit-tap-highlight-color: transparent;
   background: var(--brand-yellow);
@@ -126,7 +118,6 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 .btn:active{ transform: translateY(1px); }
 .btn-small{ padding:8px 12px; font-size:14px; margin-left:auto; }
 
-/* Progress pill (global + HUD) */
 .progress{
   display:grid; grid-auto-flow:column; gap:8px; align-items:center;
   width:100%;
@@ -147,7 +138,19 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 .drop.filled{ opacity:1; background: var(--brand-navy); }
 @supports not (clip-path: path("M0 0")) { .drop{ clip-path: ellipse(50% 40% at 50% 50%); border-radius:50%; } }
 
-/* Home hero */
+.progress .drops .drop{
+  background: transparent;
+  opacity: 1;
+  border: 2px solid var(--brand-yellow);
+}
+.progress .drops .drop.half{
+  background: linear-gradient(to top, var(--brand-yellow) 50%, transparent 50%);
+}
+.progress .drops .drop.filled{
+  background: var(--brand-yellow);
+  border-color: var(--brand-yellow);
+}
+
 .hero .intro-board{
   background: var(--clay);
   color: var(--paper);
@@ -164,7 +167,6 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
   display:block; width:100%; max-width: 520px; margin: 12px auto 0; opacity:.95;
 }
 
-/* Stage grid */
 #stage .grid{ display:grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
 @media (min-width:560px){ #stage .grid{ grid-template-columns: repeat(3, 1fr); } }
 
@@ -183,7 +185,7 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
   padding:2px 6px; border-radius:8px; border:1px solid var(--slate);
 }
 
-/* HUD + board wrapper (shown only on level via JS) */
+/* HUD + board wrapper */
 .hud{
   display:grid; grid-template-columns: 1fr auto auto auto auto; align-items:center; gap: var(--gap);
   padding-block:6px;
@@ -201,12 +203,10 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 }
 #board{ position:absolute; inset:0; }
 
-/* Runner sprites/lines */
 .player{
   position:absolute; left:30px;
   width:48px; height:56px;
   background: url("img/runner_sprite.png") center/contain no-repeat;
-  /* image supplies its own colors; surrounding bounds use palette only */
 }
 .player::before{ content:none; }
 
@@ -216,11 +216,26 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
   border:2px solid var(--ink);
 }
 
-/* Drops in runner board */
+
 .static-drop{ position:absolute; width:28px; height:38px; }
 .static-drop .drop{ width:100%; height:100%; opacity:1; background: var(--brand-navy); }
 
-/* Water Sort */
+
+.float-text{
+  position:absolute;
+  font-weight:900;
+  color:#0b2a3a;
+  pointer-events:none;
+  animation: floatUp 1s ease-out forwards;
+  transform: translate(-50%, 0);
+}
+.float-text.good{ color:#0b6a2a; }
+.float-text.bad{ color:#b21e1e; }
+@keyframes floatUp{
+  from{ opacity:1; transform: translate(-50%, 0); }
+  to  { opacity:0; transform: translate(-50%, 26px); }
+}
+
 .sort-board{
   display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; justify-items:center; margin-top:8px;
 }
@@ -232,12 +247,11 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 }
 .cell{ border-radius: 8px; border:1px solid var(--slate); }
 .bottle:focus-within, .bottle.selected{ outline:3px solid var(--brand-purple); }
-.color-a{ background: var(--brand-navy); }  /* blue */
-.color-b{ background: var(--brand-yellow); }/* yellow */
-.color-c{ background: var(--brand-purple);} /* purple */
-.color-d{ background: var(--peach); }       /* peach */
+.color-a{ background: var(--brand-navy); }
+.color-b{ background: var(--brand-yellow); }
+.color-c{ background: var(--brand-purple); }
+.color-d{ background: var(--peach); }
 
-/* Achievements list (two columns: achievement / reward) */
 .ach-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
 .ach-progress{ font-weight:800; color: var(--brand-navy); }
 .tabs{ display:flex; gap:8px; }
@@ -268,7 +282,7 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 .status{ padding:2px 8px; border-radius:999px; border:2px solid var(--slate); color: var(--brand-navy); }
 .status.ok{ background: var(--brand-yellow); border-color: var(--brand-yellow); color: var(--brand-navy); }
 
-/* Confetti host (no color here; colors are set in JS) */
+/* Confetti host */
 #confetti-host{
   position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 9999;
 }
@@ -281,29 +295,12 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 @keyframes fall{ to{ transform: translateY(110vh) rotate(1turn); } }
 @keyframes spin{  50%{ transform: translateY(55vh) rotate(.5turn); } }
 
-/* ---------- Brand font ---------- */
 :root { --font-ui: "Montserrat", ui-rounded, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial; }
 body, button, input { font-family: var(--font-ui); }
 
-/* ---------- HUD: Difficulty select + toast + mute ---------- */
 .hud { position: relative; }
-.diff {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-weight: 800; color: var(--brand-navy);
-}
-.diff select{
-  appearance: none;
-  border: 2px solid var(--slate);
-  background: var(--paper);
-  color: var(--brand-navy);
-  padding: 6px 10px;
-  border-radius: 12px;
-  font-weight: 800;
-  cursor: pointer;
-}
 #muteBtn{ margin-left: 0; }
 
-/* Milestone toast */
 .toast{
   position:absolute; right:12px; bottom:-8px; transform: translateY(8px);
   background: var(--brand-yellow); color: var(--brand-navy);
@@ -313,13 +310,11 @@ body, button, input { font-family: var(--font-ui); }
 }
 .toast.show{ opacity:1; transform: translateY(0); }
 
-/* Collected drop pop */
 .static-drop.pop { animation: pop-out 120ms ease-out forwards; }
 @keyframes pop-out{
   to { transform: scale(.8); opacity: 0; }
 }
 
-/* ---------- Footer links ---------- */
 .site-footer{
   margin-top: 10px; text-align: center; padding: 10px 0;
   color: var(--brand-navy);
@@ -327,18 +322,6 @@ body, button, input { font-family: var(--font-ui); }
 .site-footer a{
   color: var(--brand-navy);
   font-weight: 800; text-decoration: underline;
-}
-
-/* Small tweak: keep HUD grid happy with new controls */
-.hud { grid-template-columns: 1fr auto auto auto auto auto; }
-.drop.half{
-  
-  background: linear-gradient(to top, var(--brand-navy) 50%, transparent 50%);
-  opacity: 1;
-}
-.drop.filled{
-  opacity: 1;
-  background: var(--brand-navy);
 }
 
 /* Achievements: clickable rows & status styles */
