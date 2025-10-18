@@ -280,3 +280,55 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 }
 @keyframes fall{ to{ transform: translateY(110vh) rotate(1turn); } }
 @keyframes spin{  50%{ transform: translateY(55vh) rotate(.5turn); } }
+
+/* ---------- Brand font ---------- */
+:root { --font-ui: "Montserrat", ui-rounded, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial; }
+body, button, input { font-family: var(--font-ui); }
+
+/* ---------- HUD: Difficulty select + toast + mute ---------- */
+.hud { position: relative; }
+.diff {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 800; color: var(--brand-navy);
+}
+.diff select{
+  appearance: none;
+  border: 2px solid var(--slate);
+  background: var(--paper);
+  color: var(--brand-navy);
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+#muteBtn{ margin-left: 0; }
+
+/* Milestone toast */
+.toast{
+  position:absolute; right:12px; bottom:-8px; transform: translateY(8px);
+  background: var(--brand-yellow); color: var(--brand-navy);
+  border:2px solid var(--clay); border-radius: 12px;
+  padding: 6px 10px; font-weight: 900; opacity:0; pointer-events:none;
+  transition: opacity .2s, transform .2s;
+}
+.toast.show{ opacity:1; transform: translateY(0); }
+
+/* Collected drop pop */
+.static-drop.pop { animation: pop-out 120ms ease-out forwards; }
+@keyframes pop-out{
+  to { transform: scale(.8); opacity: 0; }
+}
+
+/* ---------- Footer links ---------- */
+.site-footer{
+  margin-top: 10px; text-align: center; padding: 10px 0;
+  color: var(--brand-navy);
+}
+.site-footer a{
+  color: var(--brand-navy);
+  font-weight: 800; text-decoration: underline;
+}
+
+/* Small tweak: keep HUD grid happy with new controls */
+.hud { grid-template-columns: 1fr auto auto auto auto auto; }
+
