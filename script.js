@@ -22,7 +22,6 @@ const resetBtn = document.getElementById('btn-reset-level');
    Progressive enhancement (remove difficulty select; ensure optional UI)
    ========================================================================= */
 (function ensureOptionalUI(){
-  
   const oldDiff = document.getElementById('difficultySelect');
   if (oldDiff) oldDiff.parentElement?.remove();
 
@@ -44,7 +43,7 @@ const resetBtn = document.getElementById('btn-reset-level');
     hudEl.appendChild(toast);
   }
 })();
-  
+
 /* =========================================================================
    User + Storage
    ========================================================================= */
@@ -88,6 +87,7 @@ function toggleLevelUI(show){
 
   if(!show){
     stopRunner();
+    stopStage6();
     if(board) board.innerHTML = '';
   }
 }
@@ -107,7 +107,7 @@ function goto(route){
   if(route === 'stage') renderStageGrid();
   if(route === 'achievements') renderAchievements();
   if(route === 'challenge') initSort();
-  if(route !== 'level1') stopRunner();
+  if(route !== 'level1') { stopRunner(); stopStage6(); }
 }
 
 document.addEventListener('click', (e)=>{
@@ -128,13 +128,13 @@ document.getElementById('btn-reset-all')?.addEventListener('click', ()=>{
 });
 
 /* =========================================================================
-   Home + Stage 
+   Home + Stage
    ========================================================================= */
 const TOTAL_STAGES = 6;
 function renderGlobalProgress(){
   for(let i=1;i<=TOTAL_STAGES;i++){
-    const el = document.querySelectorAll(`.progress .drops .drop[data-slot="${i-1}"]`);
-    el.forEach(drop=>{
+    const els = document.querySelectorAll(`.progress .drops .drop[data-slot="${i-1}"]`);
+    els.forEach(drop=>{
       const hasS = !!save.achievements[`L${i}-S`];
       const hasH = !!save.achievements[`L${i}-H`];
       drop.classList.remove('half','filled');
@@ -172,15 +172,16 @@ function renderStageGrid(){
       if(label) card.insertAdjacentHTML('beforeend', `<span class="badge">${label}</span>`);
       const btnS = card.querySelector('[data-mode="S"]');
       const btnH = card.querySelector('[data-mode="H"]');
-      btnH.disabled = !hasS; // Hard 需先过 Simple
+      btnH.disabled = !hasS; // Hard requires Simple first
+
       btnS.addEventListener('click', ()=>{
         goto('level1');
-        if(i === 6) startStage6Placeholder(); else startRunner(i,'S');
+        if(i === 6) startStage6('S'); else startRunner(i,'S');
       });
       btnH.addEventListener('click', ()=>{
         if(btnH.disabled) return;
         goto('level1');
-        if(i === 6) startStage6Placeholder(); else startRunner(i,'H');
+        if(i === 6) startStage6('H'); else startRunner(i,'H');
       });
     }
 
@@ -197,8 +198,8 @@ const achP = document.getElementById('ach-p');
 
 function achievementMeta(level, tab){
   return (tab === 'simple')
-    ? { ach:`Complete Stage ${level} (Simple)`, reward:`Amazon Gift Card $10` }
-    : { ach:`Complete Stage ${level} (Hard)`,   reward:`Amazon Gift Card $20` };
+    ? { ach:`Complete Stage ${level} (Simple)`, reward:`Revive and mark Simple` }
+    : { ach:`Complete Stage ${level} (Hard)`,   reward:`Revive and mark Hard` };
 }
 function statusLabel(s){ return s === 'finished' ? 'Finished' : s[0].toUpperCase()+s.slice(1); }
 
@@ -261,7 +262,7 @@ achList?.addEventListener('click', (e)=>{
   const level = parseInt(rowBtn.dataset.level, 10);
   const mode  = rowBtn.dataset.mode; // 'S'|'H'
   goto('level1');
-  if (level === 6) startStage6Placeholder(); else startRunner(level, mode);
+  if (level === 6) startStage6(mode); else startRunner(level, mode);
 });
 
 /* =========================================================================
@@ -290,8 +291,7 @@ let drops = [];   // {x,y,type,taken,el}
 let pits  = [];   // {x,w,el}
 let timerId = 0;
 let runnerSnapshot = null;
-let reviveFrames = 0; 
-
+let reviveFrames = 0;
 
 function floatText(screenX, screenBottomY, text, good=true){
   const fx = document.createElement('div');
@@ -302,7 +302,6 @@ function floatText(screenX, screenBottomY, text, good=true){
   board.appendChild(fx);
   setTimeout(()=> fx.remove(), 1000);
 }
-
 
 const MILESTONES = [
   { score: 5,  text: "Nice start! 🌊" },
@@ -325,7 +324,7 @@ function maybeShowMilestone(curScore){
   }
 }
 
-/* Stage （Simple / Hard） */
+/* Stage config (Simple / Hard) */
 const STAGES = {
   1: { timeS:180, goalS:20, timeH:150, goalH:25, pollution:false, basePit:0.16, hardPitAdd:0.03 },
   2: { timeS:180, goalS:25, timeH:150, goalH:30, pollution:false, basePit:0.16, hardPitAdd:0.03 },
@@ -338,7 +337,8 @@ function currentGoal(){
   return stageMode==='H' ? s.goalH : s.goalS;
 }
 function updatePct(){
-  const goal = currentGoal();
+  // runner (1–5) uses goal drops; stage 6 has its own handler
+  const goal = currentGoal?.() ?? 1;
   const pct = Math.min(100, Math.round((score/goal)*100));
   if (levelPctEl) levelPctEl.textContent = `${pct}%`;
   if (levelBarEl) levelBarEl.style.width = `${pct}%`;
@@ -386,6 +386,7 @@ function mountPlayer(){
 function renderPlayer(){ player.el.style.transform = `translateY(${-player.y}px)`; }
 
 function startRunner(level, mode='S'){
+  stopStage6();
   levelIdx = level;
   stageMode = mode;
 
@@ -422,7 +423,7 @@ function stopRunner(){
   unbindControls();
 }
 
-/* Controls */
+/* Controls (runner) */
 let jumpHeld = false, jumpBoost = 0;
 function bindControls(){
   window.addEventListener('keydown', onKeyDown);
@@ -448,20 +449,31 @@ function onAuxClick(e){ if(sections['level1'].hidden || isUiClick(e.target)) ret
 function startJump(){ jumpHeld = true; if(player.onGround){ player.vy = 12; player.onGround = false; jumpBoost = 14; } }
 function endJump(){ if(!jumpHeld) return; jumpHeld = false; jumpBoost = 0; }
 function togglePause(){
+  // For runner OR stage 6 (both use same button)
+  const activeIsStage6 = stage6.active;
+  if(activeIsStage6){
+    stage6.paused = !stage6.paused;
+    pauseBtn.textContent = stage6.paused ? 'Resume' : 'Pause';
+    if(!stage6.paused) stage6Tick();
+    return;
+  }
   running = !running;
   if(pauseBtn) pauseBtn.textContent = running ? 'Pause' : 'Resume';
   if(running){
     raf = requestAnimationFrame(loop);
     tickTimer();
   }else{
-    clearTimeout(timerId); 
+    clearTimeout(timerId);
   }
 }
 pauseBtn?.addEventListener('click', togglePause);
 exitBtn?.addEventListener('click', ()=>{ sfx.play('fail'); goto('stage'); });
-resetBtn?.addEventListener('click', ()=>{ stopRunner(); startRunner(levelIdx, stageMode); });
+resetBtn?.addEventListener('click', ()=>{
+  if(stage6.active){ startStage6(stageMode); }
+  else { stopRunner(); startRunner(levelIdx, stageMode); }
+});
 
-/* Loop */
+/* Loop (runner) */
 function loop(){
   if(!running) return;
 
@@ -474,7 +486,6 @@ function loop(){
 
   spawnAhead();
 
- 
   drops.forEach(d=>{
     if(d.taken) return;
     const sx = d.x - scrollX;
@@ -486,7 +497,7 @@ function loop(){
     p.el.style.left = `${sx}px`;
   });
 
-  
+  // Robust pit collision: only when feet are near ground; use center test with margin.
   const nearGround = player.y <= 2;
   const centerX    = player.x + player.w * 0.5;
   const SAFE = 6;
@@ -504,7 +515,7 @@ function loop(){
     }
   }
 
- 
+  // Collect / pollution
   for (const d of drops){
     if(d.taken) continue;
     const sx = d.x - scrollX;
@@ -536,7 +547,7 @@ function loop(){
   raf = requestAnimationFrame(loop);
 }
 
-/* Timer */
+/* Timer (runner) */
 function tickTimer(){
   if(!running || timeLeft<=0) return;
   timeLeft--;
@@ -562,22 +573,18 @@ function confettiBurst(count=120){
   }
 }
 
-/* Outcomes */
+/* Outcomes (runner) */
 function winStage(){
   stopRunner();
   const key = `L${levelIdx}-${stageMode}`;
   save.achievements[key] = true;
-
-
   if(stageMode === 'S'){
     save.unlocked = Math.max(save.unlocked, levelIdx+1);
     save.completed = Math.max(save.completed||0, Math.min(levelIdx, TOTAL_STAGES));
   }
   store.save(save);
-
   confettiBurst();
   sfx.play('win');
-
   setTimeout(()=> alert(`Level ${levelIdx} complete! ${stageMode==='H'?'HARD':'SIMPLE'} achievement unlocked.`), 50);
   renderGlobalProgress();
   renderStageGrid();
@@ -634,7 +641,6 @@ function resumeRunnerFromSnapshot(){
 
   maxSpawnX = Math.max(0, ...drops.map(d=>d.x), ...pits.map(p=>p.x + p.w));
 
-  // HUD 
   hudLevelEl.textContent = String(levelIdx);
   scoreEl.textContent = String(score);
   pollEl.textContent  = String(pollution);
@@ -650,7 +656,7 @@ function resumeRunnerFromSnapshot(){
   bindControls();
 
   runnerSnapshot = null;
-  reviveFrames = 45; // ~0.75s 
+  reviveFrames = 45; // ~0.75s after revive
 }
 
 function failStage(reason){
@@ -663,7 +669,7 @@ function failStage(reason){
 }
 
 /* =========================================================================
-   Challenge – Water Sort
+   Challenge – Water Sort (penalty for runner only)
    ========================================================================= */
 const sortBoard = document.getElementById('sort-board');
 const undoBtn = document.getElementById('undo');
@@ -751,28 +757,277 @@ function checkSolved(){
 }
 
 /* =========================================================================
-   Stage 6 – placeholder
+   Stage 6 – Barrel Merge (T1=5,T2=10,T3=20,T4=40,T5=50, goal=500, no timer)
    ========================================================================= */
-function startStage6Placeholder(){
+const stage6 = {
+  active:false, paused:false, raf:0,
+  pieces:[], dragging:false, spawn:null, mode:'S',
+  score:0,
+  // barrel inner rect (in board coordinates)
+  rect:null, lidY:0,
+};
+const TIER_VALUES = [5,10,20,40,50];
+const TIER_RADII  = [12,16,20,26,32]; // px
+const G = 0.68;
+const FRICTION = 0.02;
+
+function startStage6(mode='S'){
   stopRunner();
-  board.innerHTML = `
-    <div class="ground" style="bottom:100px"></div>
-    <div style="
-      position:absolute; left:50%; transform:translateX(-50%);
-      bottom:110px; width:260px; height:300px;
-      border:16px solid #a35d35; border-top-width:28px; border-bottom-width:18px; border-radius:10px;
-      background:linear-gradient(180deg,#ffffff 0%, #f3f7fb 100%);
-    "></div>
-    <p style="position:absolute; top:16px; left:50%; transform:translateX(-50%); font-weight:900;">
-      Stage 6 – Barrel Merge (prototype)
-    </p>
-  `;
-  document.getElementById('hud-level').textContent = '6';
-  document.getElementById('timer').textContent = '∞';
-  document.getElementById('score').textContent = '0';
-  document.getElementById('poll').textContent = '0';
-  if (levelPctEl){ levelPctEl.textContent = '0%'; }
-  if (levelBarEl){ levelBarEl.style.width = '0%'; }
+  stage6.mode = mode;
+  stage6.active = true;
+  stage6.paused = false;
+  stage6.pieces = [];
+  stage6.dragging = false;
+  stage6.spawn = null;
+  stage6.score = 0;
+
+  hudLevelEl.textContent = '6';
+  timerEl.textContent = '∞';
+  pollEl.textContent = '0';
+  scoreEl.textContent = '0';
+  levelPctEl.textContent = '0%';
+  levelBarEl.style.width = '0%';
+  sfx.play('start');
+
+  // draw barrel
+  board.innerHTML = '';
+  const ground = document.createElement('div');
+  ground.className = 'ground';
+  ground.style.bottom = `${GROUND_Y}px`;
+  board.appendChild(ground);
+
+  // barrel inner area
+  const barrel = document.createElement('div');
+  barrel.className = 'barrel';
+  board.appendChild(barrel);
+
+  // compute rect now that it's in DOM
+   const bb = board.getBoundingClientRect();
+  const br = barrel.getBoundingClientRect();
+  const cs = getComputedStyle(barrel);
+  const bL = parseFloat(cs.borderLeftWidth)   || 0;
+  const bR = parseFloat(cs.borderRightWidth)  || 0;
+  const bT = parseFloat(cs.borderTopWidth)    || 0;  // this is the “lid”
+  const bB = parseFloat(cs.borderBottomWidth) || 0;
+
+  stage6.rect = {
+    left:   (br.left   - bb.left) + bL,
+    right:  (br.right  - bb.left) - bR,
+    top:    (br.top    - bb.top)  + bT,     // inner top (bottom edge of the lid)
+    bottom: (br.bottom - bb.top)  - bB
+  };
+  stage6.lidY = stage6.rect.top; 
+
+  // input
+  board.addEventListener('pointerdown', stage6_onDown);
+  board.addEventListener('pointermove', stage6_onMove);
+  board.addEventListener('pointerup', stage6_onUp);
+  board.addEventListener('pointercancel', stage6_onUp);
+  board.setPointerCapture?.(1);
+
+  stage6Tick();
+}
+
+function stopStage6(){
+  if(!stage6.active) return;
+  stage6.active = false;
+  cancelAnimationFrame(stage6.raf);
+  board.removeEventListener('pointerdown', stage6_onDown);
+  board.removeEventListener('pointermove', stage6_onMove);
+  board.removeEventListener('pointerup', stage6_onUp);
+  board.removeEventListener('pointercancel', stage6_onUp);
+}
+
+function stage6_onDown(e){
+  if(!stage6.active || stage6.dragging) return;
+
+  // only create a new piece if none is waiting
+  if(stage6.spawn) return;
+
+  const spawnTier = 0; // always T1 for spawn
+  const r = TIER_RADII[spawnTier];
+  const clampX = (x)=>Math.max(stage6.rect.left + r, Math.min(stage6.rect.right - r, x));
+
+  stage6.spawn = {
+    tier: spawnTier, r,
+    x: clampX(e.offsetX),
+    y: stage6.rect.top - r - 6, // just above lid
+    vx: 0, vy: 0,
+    state: 'spawning',
+    el: null
+  };
+
+  const el = document.createElement('div');
+  el.className = 'bead';
+  el.style.width  = el.style.height = `${r*2}px`;
+  el.style.left = `${stage6.spawn.x - r}px`;
+  el.style.top  = `${stage6.spawn.y - r}px`;
+  el.dataset.tier = String(spawnTier+1);
+  stage6.spawn.el = el;
+  board.appendChild(el);
+
+  stage6.dragging = true;
+}
+
+function stage6_onMove(e){
+  if(!stage6.active || !stage6.dragging || !stage6.spawn) return;
+  const r = stage6.spawn.r;
+  const clampX = (x)=>Math.max(stage6.rect.left + r, Math.min(stage6.rect.right - r, x));
+  stage6.spawn.x = clampX(e.offsetX);
+  stage6.spawn.el.style.left = `${stage6.spawn.x - r}px`;
+}
+
+function stage6_onUp(){
+  if(!stage6.active || !stage6.dragging || !stage6.spawn) return;
+  stage6.dragging = false;
+  stage6.spawn.state = 'falling';
+  // move into pieces array to be simulated
+  stage6.pieces.push(stage6.spawn);
+  stage6.spawn = null;
+}
+
+function stage6Tick(){
+  if(!stage6.active || stage6.paused){ return; }
+
+  // integrate
+  for(const p of stage6.pieces){
+    if(p.state !== 'falling') continue;
+    p.vy += G;
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // walls
+    if(p.x - p.r < stage6.rect.left){ p.x = stage6.rect.left + p.r; p.vx *= -0.4; }
+    if(p.x + p.r > stage6.rect.right){ p.x = stage6.rect.right - p.r; p.vx *= -0.4; }
+
+    // floor
+    const floorY = stage6.rect.bottom - p.r;
+    if(p.y > floorY){
+      p.y = floorY;
+      p.vy *= -0.35;
+      // settle when slow enough
+      if(Math.abs(p.vy) < 0.6){ p.vy = 0; p.state = 'settled'; }
+    }
+  }
+
+  // bead-bead collisions (very simple)
+  for(let i=0;i<stage6.pieces.length;i++){
+    for(let j=i+1;j<stage6.pieces.length;j++){
+      const a = stage6.pieces[i], b = stage6.pieces[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx,dy);
+      const minDist = a.r + b.r;
+      if(dist < minDist){
+        // push apart
+        const nx = (dx || 0.0001) / dist;
+        const ny = (dy || 0.0001) / dist;
+        const overlap = (minDist - dist);
+        a.x -= nx * overlap*0.5; a.y -= ny * overlap*0.5;
+        b.x += nx * overlap*0.5; b.y += ny * overlap*0.5;
+
+        // small bounce/drag
+        const relVx = b.vx - a.vx;
+        const relVy = b.vy - a.vy;
+        const sep = relVx*nx + relVy*ny;
+        if(sep < 0){
+          const impulse = -0.3 * sep;
+          a.vx -= impulse*nx; a.vy -= impulse*ny;
+          b.vx += impulse*nx; b.vy += impulse*ny;
+        }
+
+        // merge if same tier and touching
+        if(a.tier === b.tier && a.tier < 4){ // up to T5
+          const cx = (a.x + b.x)/2, cy = (a.y + b.y)/2;
+          mergeIntoNextTier(i,j,cx,cy);
+          // restart loops safely
+          i = -1; break;
+        }
+      }
+    }
+  }
+
+  // friction for settled beads so stacks stabilize
+  for(const p of stage6.pieces){
+    if(p.state === 'settled'){
+      p.vx *= (1 - FRICTION);
+      p.vy = 0;
+    }
+  }
+
+  // render
+  for(const p of stage6.pieces){
+    if(!p.el){
+      const el = document.createElement('div');
+      el.className = 'bead';
+      el.style.width = el.style.height = `${p.r*2}px`;
+      el.dataset.tier = String(p.tier+1);
+      board.appendChild(el);
+      p.el = el;
+    }
+    p.el.style.left = `${p.x - p.r}px`;
+    p.el.style.top  = `${p.y - p.r}px`;
+  }
+
+    // overflow only when a SETTLED bead reaches the lid line (inner top)
+  for (const p of stage6.pieces){
+    if (p.state === 'settled' && (p.y - p.r) <= stage6.lidY + 0.5){
+      alert('Overflow! The barrel spilled.');
+      startStage6(stage6.mode);
+      return;
+    }
+  }
+
+
+  stage6.raf = requestAnimationFrame(stage6Tick);
+}
+
+function mergeIntoNextTier(i,j,cx,cy){
+  const a = stage6.pieces[i], b = stage6.pieces[j];
+  // remove larger index first
+  const hi = Math.max(i,j), lo = Math.min(i,j);
+  if(stage6.pieces[hi].el) stage6.pieces[hi].el.remove();
+  if(stage6.pieces[lo].el) stage6.pieces[lo].el.remove();
+  stage6.pieces.splice(hi,1);
+  stage6.pieces.splice(lo,1);
+
+  const nextTier = Math.min(a.tier+1, 4);
+  const r = TIER_RADII[nextTier];
+  const bead = {
+    tier: nextTier, r,
+    x: cx, y: cy,
+    vx: 0, vy: -1.5,
+    state: 'falling',
+    el: null
+  };
+  stage6.pieces.push(bead);
+
+  // score equals value of new tier
+  stage6.score += TIER_VALUES[nextTier];
+  scoreEl.textContent = String(stage6.score);
+
+  // update goal 500
+  const pct = Math.min(100, Math.round((stage6.score/500)*100));
+  levelPctEl.textContent = `${pct}%`;
+  levelBarEl.style.width = `${pct}%`;
+
+  // win?
+  if(stage6.score >= 500){
+    stopStage6();
+    const key = `L6-${stage6.mode}`;
+    save.achievements[key] = true;
+    if(stage6.mode === 'S'){
+      save.unlocked = Math.max(save.unlocked, 7); // beyond max, harmless
+      save.completed = Math.max(save.completed||0, 6);
+    }
+    store.save(save);
+    confettiBurst();
+    sfx.play('win');
+    setTimeout(()=> alert(`Stage 6 complete! ${stage6.mode==='H'?'HARD':'SIMPLE'} achievement unlocked.`), 50);
+    renderGlobalProgress();
+    renderStageGrid();
+    renderAchievements();
+    goto('stage');
+  }
 }
 
 /* =========================================================================
