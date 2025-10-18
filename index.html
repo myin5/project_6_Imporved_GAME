@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Every Drop Matters – Prototype</title>
   <link rel="stylesheet" href="styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="app" id="app">
@@ -104,6 +105,18 @@
           <div class="score-box">Score: <span id="score">0</span></div>
           <div class="timer"><span id="timer" aria-live="polite">3:00</span></div>
           <div class="pollution" aria-label="Pollution meter"><span id="poll">0</span>%</div>
+          <label class="diff">
+            Mode:
+            <select id="difficultySelect" aria-label="Difficulty">
+              <option>Easy</option>
+              <option selected>Normal</option>
+              <option>Hard</option>
+            </select>
+          </label>
+
+<button class="btn btn-small" id="muteBtn" aria-pressed="false" title="Mute/Unmute">🔊</button>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
           <button class="btn btn-small" id="btn-reset-level" title="Restart this level">Reset Level</button>
         </div>
 
@@ -131,7 +144,14 @@
       </section>
     </main>
 
-    <footer></footer>
+    <footer class="site-footer">
+      <p>
+        Learn more at
+        <a href="https://www.charitywater.org" target="_blank" rel="noopener">charity: water</a>
+        •
+        <a href="https://www.charitywater.org/donate" target="_blank" rel="noopener">Donate</a>
+      </p>
+    </footer>
   </div>
 
   <!-- confetti host -->
