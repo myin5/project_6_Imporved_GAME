@@ -7,6 +7,7 @@
   --peach:        #fed8c1;
   --clay:         #bf6c46;
   --slate:        #Cbccd1;
+  --progress-drop: #77A8BB; 
 
   --accent: var(--brand-yellow);
   --radius: 18px;
@@ -118,6 +119,7 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 .btn:active{ transform: translateY(1px); }
 .btn-small{ padding:8px 12px; font-size:14px; margin-left:auto; }
 
+/* Progress pill container */
 .progress{
   display:grid; grid-auto-flow:column; gap:8px; align-items:center;
   width:100%;
@@ -129,6 +131,8 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 }
 .progress.slim{ margin-block:8px }
 .drops{ display:grid; grid-auto-flow:column; gap:8px; }
+
+/* Base drop shape (used everywhere) */
 .drop{
   width:18px; height:24px;
   background: var(--brand-navy);
@@ -138,19 +142,26 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 .drop.filled{ opacity:1; background: var(--brand-navy); }
 @supports not (clip-path: path("M0 0")) { .drop{ clip-path: ellipse(50% 40% at 50% 50%); border-radius:50%; } }
 
+/* === Progress bar drops (Home/Stage) — outline without a rectangle === */
 .progress .drops .drop{
   background: transparent;
   opacity: 1;
-  border: 2px solid var(--brand-yellow);
+  border: none;                                  /* border off to avoid the rectangle */
+  box-shadow: inset 0 0 0 2px var(--progress-drop);
+  background-clip: padding-box;
 }
 .progress .drops .drop.half{
-  background: linear-gradient(to top, var(--brand-yellow) 50%, transparent 50%);
+  background: linear-gradient(to top, var(--progress-drop) 50%, transparent 50%);
+  box-shadow: inset 0 0 0 2px var(--progress-drop);
+  background-clip: padding-box;
 }
 .progress .drops .drop.filled{
-  background: var(--brand-yellow);
-  border-color: var(--brand-yellow);
+  background: var(--progress-drop);
+  box-shadow: inset 0 0 0 2px var(--progress-drop);
+  background-clip: padding-box;
 }
 
+/* Home hero */
 .hero .intro-board{
   background: var(--clay);
   color: var(--paper);
@@ -167,6 +178,7 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
   display:block; width:100%; max-width: 520px; margin: 12px auto 0; opacity:.95;
 }
 
+/* Stage grid */
 #stage .grid{ display:grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
 @media (min-width:560px){ #stage .grid{ grid-template-columns: repeat(3, 1fr); } }
 
@@ -216,11 +228,14 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
   border:2px solid var(--ink);
 }
 
-
+/* In-game drops: clean = #77A8BB; dirty is set in JS */
 .static-drop{ position:absolute; width:28px; height:38px; }
-.static-drop .drop{ width:100%; height:100%; opacity:1; background: var(--brand-navy); }
+.static-drop .drop{
+  width:100%; height:100%; opacity:1;
+  background: var(--progress-drop); /* clean water color */
+}
 
-
+/* Floating +1/-1 text */
 .float-text{
   position:absolute;
   font-weight:900;
@@ -236,6 +251,7 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
   to  { opacity:0; transform: translate(-50%, 26px); }
 }
 
+/* Water Sort */
 .sort-board{
   display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; justify-items:center; margin-top:8px;
 }
@@ -252,6 +268,7 @@ main{ display:grid; gap: var(--gap); margin-top: var(--gap); }
 .color-c{ background: var(--brand-purple); }
 .color-d{ background: var(--peach); }
 
+/* Achievements */
 .ach-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
 .ach-progress{ font-weight:800; color: var(--brand-navy); }
 .tabs{ display:flex; gap:8px; }
@@ -301,6 +318,7 @@ body, button, input { font-family: var(--font-ui); }
 .hud { position: relative; }
 #muteBtn{ margin-left: 0; }
 
+/* Toast */
 .toast{
   position:absolute; right:12px; bottom:-8px; transform: translateY(8px);
   background: var(--brand-yellow); color: var(--brand-navy);
@@ -310,6 +328,7 @@ body, button, input { font-family: var(--font-ui); }
 }
 .toast.show{ opacity:1; transform: translateY(0); }
 
+/* Collected drop pop */
 .static-drop.pop { animation: pop-out 120ms ease-out forwards; }
 @keyframes pop-out{
   to { transform: scale(.8); opacity: 0; }
@@ -324,7 +343,7 @@ body, button, input { font-family: var(--font-ui); }
   font-weight: 800; text-decoration: underline;
 }
 
-/* Achievements: clickable rows & status styles */
+/* Achievements: clickable rows & finished style */
 #achievements .ach-btn {
   display: grid;
   grid-template-columns: 1fr 1fr;
