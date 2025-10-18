@@ -359,6 +359,9 @@ function startRunner(level){
   viewW = board.clientWidth || 640; scrollX = 0; maxSpawnX = 0;
   makeGround(); spawnStatics(); mountPlayer();
 
+  // 🔊 play game start sound
+  sfx.play('start');
+
   running = true; cancelAnimationFrame(raf);
   raf = requestAnimationFrame(loop);
   if(timeLeft>0){ clearTimeout(timerId); tickTimer(); }
@@ -401,7 +404,8 @@ function startJump(){ jumpHeld = true; if(player.onGround){ player.vy = 12; play
 function endJump(){ if(!jumpHeld) return; jumpHeld = false; jumpBoost = 0; }
 function togglePause(){ running = !running; if(pauseBtn) pauseBtn.textContent = running ? 'Pause' : 'Resume'; if(running){ raf = requestAnimationFrame(loop); tickTimer(); } }
 pauseBtn?.addEventListener('click', togglePause);
-exitBtn?.addEventListener('click', ()=> goto('stage'));
+// 🔊 Exit uses the fail sound
+exitBtn?.addEventListener('click', ()=>{ sfx.play('fail'); goto('stage'); });
 resetBtn?.addEventListener('click', ()=>{ stopRunner(); startRunner(levelIdx); });
 
 /* Loop */
@@ -441,17 +445,12 @@ function loop(){
       d.taken = true;
 
       if(d.type==='dirty'){
-        // SFX: miss/penalty
-        sfx.play('miss');
-
+        // No small penalty sound (you only have start/win/fail)
         d.el.remove();
         pollution = Math.min(100, pollution + 25); pollEl.textContent = String(pollution);
         if(pollution>=100){ failStage('pollution'); return; }
       }else{
-        // SFX: collect
-        sfx.play('collect');
-
-        // small pop animation then remove
+        // No collect sound (you only have start/win/fail)
         d.el.classList.add('pop');
         setTimeout(()=> d.el.remove(), 120);
 
@@ -509,6 +508,7 @@ function winStage(){
   store.save(save);
 
   confettiBurst();
+  // 🔊 play success sound
   sfx.play('win');
 
   setTimeout(()=> alert(`Level ${levelIdx} complete! Simple achievement unlocked.`), 50);
@@ -527,7 +527,8 @@ function resumeRunnerFromSnapshot(){ /* … keep if you use penalty → resume �
 function failStage(reason){
   // Optional: snapshotRunner();
   stopRunner();
-  sfx.play('miss');
+  // 🔊 play fail sound
+  sfx.play('fail');
   initSort();
   alert(`Failed (${reason}). Clear the Water Sort to revive.`);
   goto('challenge');
@@ -646,16 +647,20 @@ function startStage6Placeholder(){
 }
 
 /* =========================================================================
-   Simple SFX manager (collect / miss / click / win)
+   Simple SFX manager (start / win / fail only)
    ========================================================================= */
 const sfx = (() => {
   const cache = {
-    collect: new Audio('audio/collect.mp3'),
-    miss:    new Audio('audio/miss.mp3'),
-    click:   new Audio('audio/click.mp3'),
-    win:     new Audio('audio/win.mp3'),
+    start: new Audio('audio/game-start.mp3'),
+    win:   new Audio('audio/winner-game-sound.mp3'),
+    fail:  new Audio('audio/game-over.mp3'),
   };
-  Object.values(cache).forEach(a => { a.preload='auto'; a.volume=0.8; });
+
+  cache.start.volume = 0.85;
+  cache.win.volume   = 0.9;
+  cache.fail.volume  = 0.9;
+
+  Object.values(cache).forEach(a => { a.preload='auto'; });
 
   let muted = false;
   const muteBtn = document.getElementById('muteBtn');
@@ -669,9 +674,6 @@ const sfx = (() => {
   window.addEventListener('pointerdown', ()=>{
     Object.values(cache).forEach(a => a.play().then(()=>a.pause()).catch(()=>{}));
   }, { once:true });
-
-  // UI click sound
-  document.addEventListener('click', (e)=>{ if(e.target.closest('button')) play('click'); });
 
   function play(name){
     const a = cache[name]; if(!a || muted) return;
