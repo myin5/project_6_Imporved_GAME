@@ -19,21 +19,13 @@ const exitBtn = document.getElementById('btn-exit1');
 const resetBtn = document.getElementById('btn-reset-level');
 
 /* =========================================================================
-   Progressive enhancement: ensure optional UI exists (difficulty, mute, toast, footer)
+   Progressive enhancement: (mute, toast, footer) – removed difficulty select
    ========================================================================= */
 (function ensureOptionalUI(){
-  // Difficulty selector
-  if (hudEl && !document.getElementById('difficultySelect')) {
-    const label = document.createElement('label');
-    label.className = 'diff';
-    label.innerHTML = `Mode:
-      <select id="difficultySelect" aria-label="Difficulty">
-        <option>Easy</option>
-        <option selected>Normal</option>
-        <option>Hard</option>
-      </select>`;
-    hudEl.appendChild(label);
-  }
+  // REMOVE difficulty selector (you only want Simple/Hard modes per stage)
+  const oldDiff = document.getElementById('difficultySelect');
+  if (oldDiff) oldDiff.parentElement?.remove();
+
   // Mute button
   if (hudEl && !document.getElementById('muteBtn')) {
     const mute = document.createElement('button');
@@ -105,13 +97,11 @@ function injectLoginButton(){
    Router + Hard Gate for Level UI
    ========================================================================= */
 function toggleLevelUI(show){
-  // Show/hide EVERYTHING related to the playable level
   if(boardWrap) boardWrap.style.display = show ? 'block' : 'none';
   if(hudEl) hudEl.style.display = show ? 'grid' : 'none';
   if(levelButtonsRow) levelButtonsRow.style.display = show ? 'flex' : 'none';
 
   if(!show){
-    // Make sure nothing keeps running or remains on screen
     stopRunner();
     if(board) board.innerHTML = '';
   }
@@ -126,13 +116,12 @@ function goto(route){
   drawer.classList.remove('open');
   menuToggle.setAttribute('aria-expanded','false');
 
-  // Gate the game area strictly to Level screen
   toggleLevelUI(route === 'level1');
 
   if(route === 'home') renderGlobalProgress();
   if(route === 'stage') renderStageGrid();
   if(route === 'achievements') renderAchievements();
-  if(route === 'challenge') initSort();          // fresh penalty each time
+  if(route === 'challenge') initSort();
   if(route !== 'level1') stopRunner();
 }
 
@@ -164,29 +153,52 @@ function renderGlobalProgress(){
 }
 
 /* =========================================================================
-   Stage select – the ONLY entry to gameplay
+   Stage select – Simple/Hard buttons per card (Hard locked until Simple)
    ========================================================================= */
 function renderStageGrid(){
   const grid = document.getElementById('stage-grid');
   grid.innerHTML = '';
   for(let i=1;i<=TOTAL_STAGES;i++){
-    const card = document.createElement('button');
+    const card = document.createElement('div');
     card.className = 'stage-card';
-    card.innerHTML = `<div>STAGE ${i}</div>`;
+    card.innerHTML = `
+      <div style="font-weight:900; margin-bottom:10px;">STAGE ${i}</div>
+      <div class="mode-row" style="display:flex; gap:10px; justify-content:center;">
+        <button class="btn btn-small" data-mode="S">Simple</button>
+        <button class="btn btn-small" data-mode="H">Hard</button>
+      </div>
+    `;
+
     if(i>save.unlocked){
-      card.classList.add('locked'); card.disabled = true;
+      card.classList.add('locked');
+      const btns = card.querySelectorAll('button');
+      btns.forEach(b=>{ b.disabled = true; });
       card.insertAdjacentHTML('beforeend', '<span class="badge">Locked</span>');
     }else{
+      // Badge showing what’s done
       const hasS = !!save.achievements[`L${i}-S`];
       const hasH = !!save.achievements[`L${i}-H`];
       const label = [hasS?'✓ Simple':'', hasH?'★ Hard':''].filter(Boolean).join(' ');
       if(label) card.insertAdjacentHTML('beforeend', `<span class="badge">${label}</span>`);
+
+      // Hard only enabled after Simple is completed
+      const btnS = card.querySelector('button[data-mode="S"]');
+      const btnH = card.querySelector('button[data-mode="H"]');
+      btnH.disabled = !hasS;
+
+      btnS.addEventListener('click', ()=>{
+        goto('level1');
+        if(i === 6) startStage6Placeholder();
+        else startRunner(i, 'S');
+      });
+      btnH.addEventListener('click', ()=>{
+        if(btnH.disabled) return;
+        goto('level1');
+        if(i === 6) startStage6Placeholder();
+        else startRunner(i, 'H');
+      });
     }
-    card.addEventListener('click', ()=>{
-      goto('level1');                        // show level UI
-      if(i === 6) startStage6Placeholder();  // Stage 6 uses its own mode for now
-      else startRunner(i);                   // Stages 1–5 runner
-    });
+
     grid.appendChild(card);
   }
 }
@@ -200,8 +212,8 @@ const achP = document.getElementById('ach-p');
 
 function achievementMeta(level, tab){
   return (tab === 'simple')
-    ? { ach:`Complete Stage ${level}`, reward:`+1 drop toward village progress` }
-    : { ach:`Clear penalty for Stage ${level}`, reward:`Revive and mark Hard` };
+    ? { ach:`Complete Stage ${level} (Simple)`, reward:`+1 drop toward village progress` }
+    : { ach:`Complete Stage ${level} (Hard)`,   reward:`Revive and mark Hard` };
 }
 function renderAchievements(){
   let html = `
@@ -250,34 +262,45 @@ const DROP_SPACING = 140;
 
 let raf = 0, running = false;
 let viewW = 0, scrollX = 0, maxSpawnX = 0;
-let speed = 3.2, pitProb = 0.16, lastPitX = -Infinity;
+let pitProb = 0.16, lastPitX = -Infinity;
 let timeLeft = 180, score = 0, collected = 0, pollution = 0;
 let player = { x: 80, y: 0, vy: 0, onGround: true };
 let levelIdx = 1;
+let stageMode = 'S'; // 'S' Simple / 'H' Hard
 let drops = [];   // {x,y,type,taken,el}
 let pits = [];    // {x,w,el}
 let timerId = 0;
 let runnerSnapshot = null;
 
-/* ---------- NEW: Difficulty overlay ---------- */
-const DIFFICULTY = {
-  Easy:   { timeMult: 1.15, goalAdd: -5, pitProbAdd: -0.02 },
-  Normal: { timeMult: 1.00, goalAdd:  0, pitProbAdd:  0.00 },
-  Hard:   { timeMult: 0.85, goalAdd:  5, pitProbAdd:  0.03 },
-};
-let currentDifficulty = 'Normal';
-const diffSelect = document.getElementById('difficultySelect');
-diffSelect?.addEventListener('change', (e)=>{
-  currentDifficulty = e.target.value;
-  if (!sections['level1'].hidden) { stopRunner(); startRunner(levelIdx); }
-});
+/* ---------- Milestones ---------- */
+const MILESTONES = [
+  { score: 5,  text: "Nice start! 🌊" },
+  { score: 10, text: "Halfway there! 💧" },
+  { score: 15, text: "So close! 🚀" },
+];
+const shownMilestones = new Set();
+function maybeShowMilestone(curScore){
+  for (const m of MILESTONES) {
+    if (curScore >= m.score && !shownMilestones.has(m.score)) {
+      shownMilestones.add(m.score);
+      const t = document.getElementById('toast');
+      if(t){
+        t.textContent = m.text;
+        t.classList.add('show');
+        setTimeout(()=> t.classList.remove('show'), 1200);
+      }
+      break;
+    }
+  }
+}
 
+/* ---------- Stage tuning per mode ---------- */
 const STAGES = {
-  1: { time:180, goal:20, pollution:false },
-  2: { time:180, goal:25, pollution:false },
-  3: { time:180, goal:25, pollution:true  },
-  4: { time:180, goal:30, pollution:true  },
-  5: { time:300, goal:40, pollution:true  }
+  1: { timeS:180, goalS:20, timeH:150, goalH:25, pollution:false, basePit:0.16, hardPitAdd:0.03 },
+  2: { timeS:180, goalS:25, timeH:150, goalH:30, pollution:false, basePit:0.16, hardPitAdd:0.03 },
+  3: { timeS:180, goalS:25, timeH:150, goalH:32, pollution:true,  basePit:0.18, hardPitAdd:0.04 },
+  4: { timeS:180, goalS:30, timeH:150, goalH:36, pollution:true,  basePit:0.20, hardPitAdd:0.05 },
+  5: { timeS:300, goalS:40, timeH:240, goalH:48, pollution:true,  basePit:0.20, hardPitAdd:0.05 },
 };
 
 function makeGround(){
@@ -293,7 +316,8 @@ function spawnAhead(){
   const stage = STAGES[levelIdx];
   while(maxSpawnX < targetX){
     const lane = LANES[(Math.floor(maxSpawnX / DROP_SPACING)) % 3];
-    const drop = { x:maxSpawnX+180, y:lane, type:(stage.pollution && Math.random()<0.25)?'dirty':'clean', taken:false };
+    const isDirty = stage.pollution && Math.random()<0.25;
+    const drop = { x:maxSpawnX+180, y:lane, type: (isDirty?'dirty':'clean'), taken:false };
     const el = document.createElement('div');
     el.className = 'static-drop'; el.style.bottom = `${GROUND_Y + drop.y}px`; el.innerHTML = `<div class="drop"></div>`;
     if(drop.type==='dirty') el.firstChild.style.background = '#6b7280';
@@ -319,39 +343,20 @@ function mountPlayer(){
 }
 function renderPlayer(){ player.el.style.transform = `translateY(${-player.y}px)`; }
 
-/* ---------- NEW: Milestones ---------- */
-const MILESTONES = [
-  { score: 5,  text: "Nice start! 🌊" },
-  { score: 10, text: "Halfway there! 💧" },
-  { score: 15, text: "So close! 🚀" },
-];
-const shownMilestones = new Set();
-function maybeShowMilestone(curScore){
-  for (const m of MILESTONES) {
-    if (curScore >= m.score && !shownMilestones.has(m.score)) {
-      shownMilestones.add(m.score);
-      const t = document.getElementById('toast');
-      if(t){
-        t.textContent = m.text;
-        t.classList.add('show');
-        setTimeout(()=> t.classList.remove('show'), 1200);
-      }
-      break;
-    }
-  }
-}
-
-function startRunner(level){
+function startRunner(level, mode='S'){
   levelIdx = level;
+  stageMode = mode;
+
   const base = STAGES[levelIdx];
-  const diff = DIFFICULTY[currentDifficulty] || DIFFICULTY.Normal;
+  timeLeft = (mode==='H') ? base.timeH : base.timeS;
+  const goal   = (mode==='H') ? base.goalH : base.goalS;
+  // compute pit probability
+  pitProb = base.basePit + (mode==='H' ? base.hardPitAdd : 0);
+  pitProb = Math.max(0, Math.min(0.35, pitProb));
 
   hudLevelEl.textContent = String(levelIdx);
-  timeLeft = Math.round((base.time || 180) * diff.timeMult);
   score = 0; collected = 0; pollution = 0;
-  speed = 3.2;
-  pitProb = (levelIdx>=4?0.20:(levelIdx>=3?0.18:0.16)) + (diff.pitProbAdd||0);
-  pitProb = Math.max(0, Math.min(0.35, pitProb));
+  shownMilestones.clear();
 
   scoreEl.textContent = '0'; pollEl.textContent = String(pollution);
   document.querySelectorAll('[data-hslot]').forEach(d=>d.classList.remove('filled'));
@@ -359,7 +364,7 @@ function startRunner(level){
   viewW = board.clientWidth || 640; scrollX = 0; maxSpawnX = 0;
   makeGround(); spawnStatics(); mountPlayer();
 
-  // 🔊 play game start sound
+  // 🔊 play start cue
   sfx.play('start');
 
   running = true; cancelAnimationFrame(raf);
@@ -367,7 +372,10 @@ function startRunner(level){
   if(timeLeft>0){ clearTimeout(timerId); tickTimer(); }
   bindControls();
 
-  runnerSnapshot = null; // start fresh
+  runnerSnapshot = null;
+
+  // stash current stage goal so we don't recompute each frame
+  startRunner.stageGoal = goal;
 }
 
 function stopRunner(){
@@ -402,17 +410,25 @@ function onPointerUp(){ if(sections['level1'].hidden) return; endJump(); }
 function onAuxClick(e){ if(sections['level1'].hidden || isUiClick(e.target)) return; if(e.button===2){ e.preventDefault(); startJump(); } }
 function startJump(){ jumpHeld = true; if(player.onGround){ player.vy = 12; player.onGround = false; jumpBoost = 14; } }
 function endJump(){ if(!jumpHeld) return; jumpHeld = false; jumpBoost = 0; }
-function togglePause(){ running = !running; if(pauseBtn) pauseBtn.textContent = running ? 'Pause' : 'Resume'; if(running){ raf = requestAnimationFrame(loop); tickTimer(); } }
+function togglePause(){
+  running = !running;
+  if(pauseBtn) pauseBtn.textContent = running ? 'Pause' : 'Resume';
+  if(running){
+    raf = requestAnimationFrame(loop);
+    tickTimer(); // resumes ticking
+  }else{
+    clearTimeout(timerId); // IMPORTANT: stop countdown while paused
+  }
+}
 pauseBtn?.addEventListener('click', togglePause);
-// 🔊 Exit uses the fail sound
 exitBtn?.addEventListener('click', ()=>{ sfx.play('fail'); goto('stage'); });
-resetBtn?.addEventListener('click', ()=>{ stopRunner(); startRunner(levelIdx); });
+resetBtn?.addEventListener('click', ()=>{ stopRunner(); startRunner(levelIdx, stageMode); });
 
 /* Loop */
 function loop(){
   if(!running) return;
 
-  scrollX += 3.2; // base speed; "speed" can be eased in if you prefer
+  scrollX += 3.2;
   if(!player.onGround){
     if(jumpHeld && jumpBoost > 0){ player.vy += 0.5; jumpBoost--; }
     player.vy -= 0.7; player.y += player.vy;
@@ -445,12 +461,10 @@ function loop(){
       d.taken = true;
 
       if(d.type==='dirty'){
-        // No small penalty sound (you only have start/win/fail)
         d.el.remove();
         pollution = Math.min(100, pollution + 25); pollEl.textContent = String(pollution);
         if(pollution>=100){ failStage('pollution'); return; }
       }else{
-        // No collect sound (you only have start/win/fail)
         d.el.classList.add('pop');
         setTimeout(()=> d.el.remove(), 120);
 
@@ -458,17 +472,12 @@ function loop(){
         const filled = collected % 8;
         document.querySelectorAll('[data-hslot]').forEach((dd,i)=> dd.classList.toggle('filled', i < filled));
 
-        const base = STAGES[levelIdx];
-        const diff = DIFFICULTY[currentDifficulty] || DIFFICULTY.Normal;
-        const stageGoal = Math.max(1, (base.goal || 20) + (diff.goalAdd || 0));
-
         maybeShowMilestone(score);
-        if(score >= stageGoal){ winStage(); return; }
+        if(score >= startRunner.stageGoal){ winStage(); return; }
       }
     }
   });
 
-  // Optional difficulty ramp / pollution heal can be added back if you want
   renderPlayer();
   raf = requestAnimationFrame(loop);
 }
@@ -502,32 +511,92 @@ function confettiBurst(count=120){
 /* Outcomes */
 function winStage(){
   stopRunner();
-  save.achievements[`L${levelIdx}-S`] = true;
-  save.unlocked = Math.max(save.unlocked, levelIdx+1);
-  save.completed = Math.max(save.completed||0, Math.min(levelIdx, TOTAL_STAGES));
+  const key = `L${levelIdx}-${stageMode}`;
+  save.achievements[key] = true;
+
+  // Unlock next stage when Simple is completed; Hard does not gate unlocks
+  if(stageMode === 'S'){
+    save.unlocked = Math.max(save.unlocked, levelIdx+1);
+    save.completed = Math.max(save.completed||0, Math.min(levelIdx, TOTAL_STAGES));
+  }
   store.save(save);
 
   confettiBurst();
-  // 🔊 play success sound
   sfx.play('win');
 
-  setTimeout(()=> alert(`Level ${levelIdx} complete! Simple achievement unlocked.`), 50);
+  setTimeout(()=> alert(`Level ${levelIdx} complete! ${stageMode==='H'?'HARD':'SIMPLE'} achievement unlocked.`), 50);
   goto('stage');
 }
 function snapshotRunner(){
-  // Keep this if you still want penalty→resume later
   runnerSnapshot = {
-    levelIdx, scrollX, timeLeft, score, collected, pollution,
+    levelIdx, stageMode,
+    scrollX, timeLeft, score, collected, pollution,
     player: { y: player.y, vy: player.vy, onGround: player.onGround },
     drops: drops.filter(d=>!d.taken).map(d => ({ x: d.x, y: d.y, type: d.type })),
-    pits: pits.map(p => ({ x: p.x, w: p.w }))
+    pits: pits.map(p => ({ x: p.x, w: p.w })),
+    stageGoal: startRunner.stageGoal,
+    pitProb
   };
 }
-function resumeRunnerFromSnapshot(){ /* … keep if you use penalty → resume … */ }
+function resumeRunnerFromSnapshot(){
+  if(!runnerSnapshot){ startRunner(levelIdx, stageMode); return; }
+  const snap = runnerSnapshot;
+
+  levelIdx   = snap.levelIdx;
+  stageMode  = snap.stageMode;
+  scrollX    = snap.scrollX;
+  timeLeft   = snap.timeLeft;
+  score      = snap.score;
+  collected  = snap.collected;
+  pollution  = snap.pollution;
+  pitProb    = snap.pitProb;
+  startRunner.stageGoal = snap.stageGoal;
+
+  board.innerHTML = '';
+  makeGround();
+  drops = []; pits = [];
+  mountPlayer();
+  player.y = snap.player.y; player.vy = snap.player.vy; player.onGround = snap.player.onGround;
+
+  snap.drops.forEach(d=>{
+    const el = document.createElement('div');
+    el.className = 'static-drop';
+    el.style.bottom = `${GROUND_Y + d.y}px`;
+    el.innerHTML = `<div class="drop"></div>`;
+    if(d.type==='dirty') el.firstChild.style.background = '#6b7280';
+    board.appendChild(el);
+    drops.push({ ...d, taken:false, el });
+  });
+  snap.pits.forEach(p=>{
+    const pel = document.createElement('div');
+    pel.className = 'pit';
+    pel.style.bottom = `${GROUND_Y}px`;
+    pel.style.width  = `${p.w}px`;
+    board.appendChild(pel);
+    pits.push({ ...p, el: pel });
+  });
+
+  maxSpawnX = Math.max(0, ...drops.map(d=>d.x), ...pits.map(p=>p.x + p.w));
+
+  // HUD restore
+  hudLevelEl.textContent = String(levelIdx);
+  scoreEl.textContent = String(score);
+  pollEl.textContent  = String(pollution);
+  const m = Math.floor(timeLeft/60), s = String(timeLeft%60).padStart(2,'0');
+  timerEl.textContent = `${m}:${s}`;
+  document.querySelectorAll('[data-hslot]').forEach((dd,i)=> dd.classList.toggle('filled', i < (collected % 8)));
+
+  running = true;
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(loop);
+  clearTimeout(timerId);
+  tickTimer();
+
+  runnerSnapshot = null; // consumed
+}
 function failStage(reason){
-  // Optional: snapshotRunner();
+  snapshotRunner();
   stopRunner();
-  // 🔊 play fail sound
   sfx.play('fail');
   initSort();
   alert(`Failed (${reason}). Clear the Water Sort to revive.`);
@@ -535,7 +604,7 @@ function failStage(reason){
 }
 
 /* =========================================================================
-   Challenge – Water Sort (unchanged from your last working build)
+   Challenge – Water Sort (unchanged logic, now resumes snapshot on solve)
    ========================================================================= */
 const sortBoard = document.getElementById('sort-board');
 const undoBtn = document.getElementById('undo');
@@ -616,10 +685,11 @@ function checkSolved(){
     return vals.length===0 || vals.every(v=>v===vals[0]);
   });
   if(solved){
+    // Mark "Hard" achievement for the stage penalty itself if desired
     save.achievements[`L${levelIdx}-H`] = true; store.save(save);
     alert("Penalty cleared! Resuming level.");
     goto('level1');
-    // You can call resumeRunnerFromSnapshot() here if you use snapshots.
+    resumeRunnerFromSnapshot(); // 🔁 restore board/sprites/timer
   }
 }
 
@@ -647,7 +717,7 @@ function startStage6Placeholder(){
 }
 
 /* =========================================================================
-   Simple SFX manager (start / win / fail only)
+   SFX (start / win / fail only)
    ========================================================================= */
 const sfx = (() => {
   const cache = {
