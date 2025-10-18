@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Every Drop Matters – Prototype</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <header>
+      <div class="brand">
+        <button id="menu-toggle" class="icon-btn" aria-label="Open menu" aria-expanded="false" aria-controls="main-menu">☰</button>
+        <img class="logo-h" src="img/cw_logo_horizontal.png" alt="charity: water" />
+        <img class="logo-s" src="img/cw_logo.png" alt="charity: water" />
+        <span class="brand-title">Every Drop Matters</span>
+      </div>
+      <nav id="main-menu" class="nav-drawer" aria-label="Primary">
+        <button data-route="home" aria-current="page">Home</button>
+        <button data-route="stage">Stage</button>
+        <button data-route="achievements">Achievements</button>
+        <button id="btn-reset-all" class="danger">Reset All</button>
+        <!-- login button injected by JS -->
+      </nav>
+    </header>
+
+    <main>
+      <!-- HOME -->
+      <section id="home" class="panel" role="region" aria-labelledby="home-h">
+        <h2 id="home-h" tabindex="-1">Home</h2>
+
+        <div class="hero">
+          <div class="intro-board">
+            <p>Every drop you collect brings the village closer to clean water.</p>
+          </div>
+
+          <div class="progress" aria-label="Water Collection Progress">
+            <strong class="nowrap">Water Collection Progress</strong>
+            <div aria-hidden="true" class="drops">
+              <div class="drop" data-slot="0"></div>
+              <div class="drop" data-slot="1"></div>
+              <div class="drop" data-slot="2"></div>
+              <div class="drop" data-slot="3"></div>
+              <div class="drop" data-slot="4"></div>
+              <div class="drop" data-slot="5"></div>
+            </div>
+          </div>
+
+          <div class="cta">
+            <button class="btn" data-route="stage">GAME START</button>
+            <button class="btn" data-route="achievements">ACHIEVEMENT</button>
+          </div>
+
+          <img class="home-illustration" src="img/home_illustration.png" alt="Village well and dry land illustration" />
+
+          <p class="ext-link"><a href="https://www.charitywater.org/" target="_blank" rel="noopener">About CHARITY: WATER</a></p>
+        </div>
+      </section>
+
+      <!-- STAGE SELECT -->
+      <section id="stage" class="panel" role="region" aria-labelledby="stage-h" hidden>
+        <h2 id="stage-h" tabindex="-1">Stage</h2>
+        <div class="progress slim" aria-label="Water Collection Progress">
+          <strong class="nowrap">Water Collection Progress</strong>
+          <div aria-hidden="true" class="drops">
+            <div class="drop" data-slot="0"></div>
+            <div class="drop" data-slot="1"></div>
+            <div class="drop" data-slot="2"></div>
+            <div class="drop" data-slot="3"></div>
+            <div class="drop" data-slot="4"></div>
+            <div class="drop" data-slot="5"></div>
+          </div>
+        </div>
+        <div class="grid" id="stage-grid"></div>
+      </section>
+
+      <!-- ACHIEVEMENTS -->
+      <section id="achievements" class="panel" role="region" aria-labelledby="ach-h" hidden>
+        <h2 id="ach-h" tabindex="-1">Achievements</h2>
+        <div class="ach-top">
+          <div class="ach-progress">Progress: <span id="ach-p">0</span>/6</div>
+          <div class="tabs">
+            <button class="tab active" data-tab="simple" aria-selected="true">simple</button>
+            <button class="tab" data-tab="hard" aria-selected="false">hard</button>
+          </div>
+        </div>
+        <div class="list" id="ach-list"></div>
+      </section>
+
+      <!-- LEVEL 1–5 RUNNER (gameplay UI lives ONLY here) -->
+      <section id="level1" class="panel" role="region" aria-labelledby="play-h" hidden>
+        <h2 id="play-h" tabindex="-1" class="sr-only">Runner Stage</h2>
+
+        <!-- HUD -->
+        <div class="hud">
+          <div class="progress" id="hud-progress" aria-label="Level progress">
+            <strong>Level <span id="hud-level">1</span></strong>
+            <div class="level-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="level-progress__bar" id="level-bar"></div>
+            </div>
+            <span class="level-progress__pct" id="level-pct">0%</span>
+          </div>
+
+          <div class="score-box">Score: <span id="score">0</span></div>
+          <div class="timer"><span id="timer" aria-live="polite">3:00</span></div>
+          <div class="pollution" aria-label="Pollution meter"><span id="poll">0</span>%</div>
+          <button class="btn btn-small" id="btn-reset-level" title="Restart this level">Reset Level</button>
+        </div>
+
+        <!-- BOARD -->
+        <div class="board-wrap">
+          <div id="board" aria-label="Game board"></div>
+        </div>
+
+        <!-- ACTIONS -->
+        <div class="row">
+          <button class="btn" id="btn-pause">Pause</button>
+          <button class="btn" id="btn-exit1" data-route="stage">Exit</button>
+        </div>
+      </section>
+
+      <!-- CHALLENGE: WATER SORT -->
+      <section id="challenge" class="panel" role="region" aria-labelledby="ch-h" hidden>
+        <h2 id="ch-h" tabindex="-1">Penalty Stage</h2>
+        <p class="hint">Tap a bottle, then another, to pour. Only onto same color or into empty bottles. Clear all to win.</p>
+        <div id="sort-board" class="sort-board" aria-live="polite"></div>
+        <div class="row">
+          <button class="btn" id="undo">Undo</button>
+          <button class="btn" data-route="stage">Exit</button>
+        </div>
+      </section>
+    </main>
+
+    <footer></footer>
+  </div>
+
+  <!-- confetti host -->
+  <div id="confetti-host" aria-hidden="true"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
